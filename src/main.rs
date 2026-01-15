@@ -10,6 +10,10 @@ fn main() {
         "plural",
         "There {{PLURAL:$1|is|are}} $1 {{PLURAL:$1|item|items}} in the box",
     );
+    en_messages.with_message(
+        "plural_with_link",
+        "There {{PLURAL:$1|is|are}} $1 {{PLURAL:$1|item|items}} in the [[box]]",
+    );
 
     let mut i18n = I18n::new();
     let i18n = i18n.with_messages_for_locale("en", en_messages);
@@ -29,5 +33,9 @@ fn main() {
     println!(
         "Localized: {}",
         i18n.localize("en", "plural", &vec!["1".to_string()])
+    );
+    println!(
+        "Localized: {}",
+        i18n.localize("en", "plural_with_link", &vec!["1".to_string()])
     );
 }

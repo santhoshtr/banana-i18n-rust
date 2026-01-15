@@ -1,9 +1,14 @@
 use std::collections::HashMap;
 
-use ast::{AstNode, AstNodeList, Localizable};
-
 pub mod ast;
 pub mod parser;
+
+// Re-export AST types for convenient access
+pub use ast::{
+    AstNode, AstNodeList, Localizable, Placeholder, Transclusion, WikiExternalLink,
+    WikiInternalLink,
+};
+pub use parser::Parser;
 
 pub struct LocalizedMessages(pub HashMap<String, String>);
 impl LocalizedMessages {
@@ -52,7 +57,7 @@ impl I18n {
         locale: &str,
         messages: LocalizedMessages,
     ) -> &mut Self {
-        self.messages.insert(locale.to_owned(), messages);
+        self.messages.insert(locale.to_lowercase(), messages);
         self
     }
 
@@ -90,6 +95,12 @@ impl I18n {
                 }
                 AstNode::Transclusion(transclusion) => {
                     result.push_str(&transclusion.localize(values).as_str());
+                }
+                AstNode::InternalLink(link) => {
+                    result.push_str(&link.to_string());
+                }
+                AstNode::ExternalLink(link) => {
+                    result.push_str(&link.to_string());
                 }
             }
         }
