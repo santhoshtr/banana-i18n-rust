@@ -153,7 +153,8 @@ impl Localizable for Transclusion {
     fn localize(&self, locale: &str, values: &Vec<String>) -> String {
         match self.name.to_uppercase().as_str() {
             "PLURAL" => self.localize_plural(locale, values),
-            // Future: Add GENDER, GRAMMAR, etc.
+            "GENDER" => self.localize_gender(locale, values),
+            // Future: Add GRAMMAR, etc.
             _ => {
                 // Unknown magic word - log warning and return original syntax
                 eprintln!("Warning: Unknown magic word '{}'", self.name);
@@ -237,7 +238,8 @@ impl Transclusion {
     ) -> String {
         match self.name.to_uppercase().as_str() {
             "PLURAL" => self.localize_plural_with_fallback(locale, values, verbosity),
-            // Future: Add GENDER, GRAMMAR, etc.
+            "GENDER" => self.localize_gender_with_context(locale, values, verbosity),
+            // Future: Add GRAMMAR, etc.
             _ => {
                 // Unknown magic word - log warning and return original syntax
                 eprintln!("Warning: Unknown magic word '{}'", self.name);
@@ -309,6 +311,91 @@ impl Transclusion {
             .get(form_index)
             .cloned()
             .unwrap_or_else(|| self.options.last().cloned().unwrap_or_default())
+    }
+
+    /// Localize a GENDER magic word
+    ///
+    /// Selects a form based on a gender parameter (male, female, or other).
+    /// If fewer than 2 forms are provided, the last form is used to pad.
+    ///
+    /// # Arguments
+    /// * `locale` - Language code (unused for GENDER, kept for consistency)
+    /// * `values` - Array of values to substitute
+    ///
+    /// # Returns
+    /// The appropriate gender form, or empty string if no forms provided
+    ///
+    /// # Gender Selection
+    /// - "male" (case-insensitive) → forms[0]
+    /// - "female" (case-insensitive) → forms[1]
+    /// - other/neutral → forms[2] if 3+ forms, else forms[0]
+    fn localize_gender(&self, _locale: &str, values: &Vec<String>) -> String {
+        // Handle zero forms case
+        if self.options.is_empty() {
+            return String::new();
+        }
+
+        // Clone forms and ensure at least 2 forms (pad with last if needed)
+        let mut forms = self.options.clone();
+        while forms.len() < 2 {
+            forms.push(forms[forms.len() - 1].clone());
+        }
+
+        // Extract gender from param
+        let gender = if self.param.starts_with('$') {
+            // It's a placeholder reference
+            let index_str = &self.param[1..];
+            let index: usize = index_str.parse().unwrap_or(0);
+            if index > 0 && index <= values.len() {
+                values[index - 1].to_lowercase()
+            } else {
+                String::new()
+            }
+        } else {
+            // Direct string (e.g., {{GENDER:male|...}})
+            self.param.to_lowercase()
+        };
+
+        // Select form based on gender
+        match gender.as_str() {
+            "male" => forms[0].clone(),
+            "female" => forms[1].clone(),
+            _ => {
+                // Neutral or unknown: use 3rd form if exists, else 1st
+                if forms.len() >= 3 {
+                    forms[2].clone()
+                } else {
+                    forms[0].clone()
+                }
+            }
+        }
+    }
+
+    /// Localize with context (fallback chain and verbosity support)
+    /// This is called from lib.rs with verbosity level
+    fn localize_gender_with_context(
+        &self,
+        _locale: &str,
+        values: &Vec<String>,
+        verbosity: VerbosityLevel,
+    ) -> String {
+        // For GENDER, we don't have complex fallback logic like PLURAL
+        // Just use the basic gender localization
+        let result = self.localize_gender(_locale, values);
+
+        // Log invalid gender values at appropriate verbosity levels
+        if !self.param.starts_with('$') {
+            let gender = self.param.to_lowercase();
+            if !matches!(gender.as_str(), "male" | "female") && verbosity >= VerbosityLevel::Verbose
+            {
+                eprintln!(
+                    "[i18n] Warning: Unknown gender '{}', using neutral form",
+                    self.param
+                );
+            }
+        }
+
+        result
     }
 }
 
@@ -1057,5 +1144,285 @@ mod tests {
             transclusion_partial.localize("ru", &vec!["5".to_string()]),
             "много"
         );
+    }
+
+    // ============================================
+    // GENDER tests
+    // ============================================
+
+    /// Test zero forms: {{GENDER:$1}} should return empty string
+    #[test]
+    fn test_gender_zero_forms() {
+        let transclusion = Transclusion {
+            name: "GENDER".to_string(),
+            param: "$1".to_string(),
+            options: vec![],
+        };
+        assert_eq!(transclusion.localize("en", &vec!["male".to_string()]), "");
+        assert_eq!(transclusion.localize("en", &vec!["female".to_string()]), "");
+    }
+
+    /// Test single form: {{GENDER:$1|form}} should pad to 2 forms
+    /// Result: both male and female use the same form
+    #[test]
+    fn test_gender_single_form() {
+        let transclusion = Transclusion {
+            name: "GENDER".to_string(),
+            param: "$1".to_string(),
+            options: vec!["person".to_string()],
+        };
+        // Single form is padded to ["person", "person"]
+        assert_eq!(
+            transclusion.localize("en", &vec!["male".to_string()]),
+            "person"
+        );
+        assert_eq!(
+            transclusion.localize("en", &vec!["female".to_string()]),
+            "person"
+        );
+        assert_eq!(
+            transclusion.localize("en", &vec!["unknown".to_string()]),
+            "person"
+        );
+    }
+
+    /// Test two forms: {{GENDER:$1|masculine|feminine}}
+    /// male -> masculine, female -> feminine, other -> masculine (no 3rd form)
+    #[test]
+    fn test_gender_two_forms() {
+        let transclusion = Transclusion {
+            name: "GENDER".to_string(),
+            param: "$1".to_string(),
+            options: vec!["he".to_string(), "she".to_string()],
+        };
+        assert_eq!(transclusion.localize("en", &vec!["male".to_string()]), "he");
+        assert_eq!(
+            transclusion.localize("en", &vec!["female".to_string()]),
+            "she"
+        );
+        // Unknown gender -> use forms[0] since no 3rd form
+        assert_eq!(
+            transclusion.localize("en", &vec!["other".to_string()]),
+            "he"
+        );
+        assert_eq!(
+            transclusion.localize("en", &vec!["neutral".to_string()]),
+            "he"
+        );
+    }
+
+    /// Test three forms: {{GENDER:$1|masculine|feminine|neutral}}
+    /// male -> masculine, female -> feminine, other -> neutral
+    #[test]
+    fn test_gender_three_forms() {
+        let transclusion = Transclusion {
+            name: "GENDER".to_string(),
+            param: "$1".to_string(),
+            options: vec!["he".to_string(), "she".to_string(), "they".to_string()],
+        };
+        assert_eq!(transclusion.localize("en", &vec!["male".to_string()]), "he");
+        assert_eq!(
+            transclusion.localize("en", &vec!["female".to_string()]),
+            "she"
+        );
+        // Unknown gender -> use forms[2] (neutral)
+        assert_eq!(
+            transclusion.localize("en", &vec!["other".to_string()]),
+            "they"
+        );
+        assert_eq!(
+            transclusion.localize("en", &vec!["unknown".to_string()]),
+            "they"
+        );
+        assert_eq!(transclusion.localize("en", &vec!["".to_string()]), "they");
+    }
+
+    /// Test case insensitivity: "Male", "FEMALE", "MaLe" all work
+    #[test]
+    fn test_gender_case_insensitive() {
+        let transclusion = Transclusion {
+            name: "GENDER".to_string(),
+            param: "$1".to_string(),
+            options: vec!["masculine".to_string(), "feminine".to_string()],
+        };
+        // All variations of "male" should match
+        assert_eq!(
+            transclusion.localize("en", &vec!["male".to_string()]),
+            "masculine"
+        );
+        assert_eq!(
+            transclusion.localize("en", &vec!["Male".to_string()]),
+            "masculine"
+        );
+        assert_eq!(
+            transclusion.localize("en", &vec!["MALE".to_string()]),
+            "masculine"
+        );
+        assert_eq!(
+            transclusion.localize("en", &vec!["MaLe".to_string()]),
+            "masculine"
+        );
+
+        // All variations of "female" should match
+        assert_eq!(
+            transclusion.localize("en", &vec!["female".to_string()]),
+            "feminine"
+        );
+        assert_eq!(
+            transclusion.localize("en", &vec!["Female".to_string()]),
+            "feminine"
+        );
+        assert_eq!(
+            transclusion.localize("en", &vec!["FEMALE".to_string()]),
+            "feminine"
+        );
+        assert_eq!(
+            transclusion.localize("en", &vec!["FeMaLe".to_string()]),
+            "feminine"
+        );
+    }
+
+    /// Test direct gender parameter (not a placeholder): {{GENDER:male|...}}
+    #[test]
+    fn test_gender_direct_parameter() {
+        let transclusion = Transclusion {
+            name: "GENDER".to_string(),
+            param: "male".to_string(), // Direct gender, not $1
+            options: vec!["he".to_string(), "she".to_string()],
+        };
+        assert_eq!(transclusion.localize("en", &vec![]), "he");
+
+        let transclusion_female = Transclusion {
+            name: "GENDER".to_string(),
+            param: "female".to_string(),
+            options: vec!["he".to_string(), "she".to_string()],
+        };
+        assert_eq!(transclusion_female.localize("en", &vec![]), "she");
+    }
+
+    /// Test missing placeholder: {{GENDER:$999|...}} should treat as no gender (neutral)
+    #[test]
+    fn test_gender_missing_placeholder() {
+        let transclusion = Transclusion {
+            name: "GENDER".to_string(),
+            param: "$999".to_string(), // Placeholder that doesn't exist
+            options: vec!["he".to_string(), "she".to_string(), "they".to_string()],
+        };
+        // Missing placeholder -> empty gender string -> neutral
+        // With 3 forms: use forms[2] (neutral)
+        assert_eq!(transclusion.localize("en", &vec![]), "they");
+    }
+
+    /// Test with context (verbosity support)
+    #[test]
+    fn test_gender_with_context() {
+        let transclusion = Transclusion {
+            name: "GENDER".to_string(),
+            param: "$1".to_string(),
+            options: vec!["male_form".to_string(), "female_form".to_string()],
+        };
+
+        // With silent verbosity
+        let result_silent = transclusion.localize_with_context(
+            "en",
+            &vec!["male".to_string()],
+            VerbosityLevel::Silent,
+        );
+        assert_eq!(result_silent, "male_form");
+
+        // With normal verbosity
+        let result_normal = transclusion.localize_with_context(
+            "en",
+            &vec!["female".to_string()],
+            VerbosityLevel::Normal,
+        );
+        assert_eq!(result_normal, "female_form");
+
+        // With verbose
+        let result_verbose = transclusion.localize_with_context(
+            "en",
+            &vec!["unknown".to_string()],
+            VerbosityLevel::Verbose,
+        );
+        assert_eq!(result_verbose, "male_form");
+    }
+
+    /// Test with direct unknown gender and verbose logging
+    /// This should produce a warning log
+    #[test]
+    fn test_gender_unknown_direct_verbose() {
+        let transclusion = Transclusion {
+            name: "GENDER".to_string(),
+            param: "invalid_gender".to_string(),
+            options: vec!["m".to_string(), "f".to_string()],
+        };
+
+        // This should trigger warning log about unknown gender
+        let result = transclusion.localize_with_context("en", &vec![], VerbosityLevel::Verbose);
+        // Still returns a valid form (neutral fallback)
+        assert_eq!(result, "m");
+    }
+
+    /// Test GENDER with different locales (behavior should be same)
+    #[test]
+    fn test_gender_multilingual() {
+        let transclusion = Transclusion {
+            name: "GENDER".to_string(),
+            param: "$1".to_string(),
+            options: vec!["мужчина".to_string(), "женщина".to_string()],
+        };
+
+        // Gender selection should work the same regardless of locale
+        // since GENDER doesn't depend on locale-specific rules
+        assert_eq!(
+            transclusion.localize("ru", &vec!["male".to_string()]),
+            "мужчина"
+        );
+        assert_eq!(
+            transclusion.localize("fr", &vec!["female".to_string()]),
+            "женщина"
+        );
+        assert_eq!(
+            transclusion.localize("de", &vec!["male".to_string()]),
+            "мужчина"
+        );
+    }
+
+    /// Test GENDER with inline text in forms
+    #[test]
+    fn test_gender_with_text_forms() {
+        let transclusion = Transclusion {
+            name: "GENDER".to_string(),
+            param: "$1".to_string(),
+            options: vec![
+                "He is happy".to_string(),
+                "She is happy".to_string(),
+                "They are happy".to_string(),
+            ],
+        };
+        assert_eq!(
+            transclusion.localize("en", &vec!["male".to_string()]),
+            "He is happy"
+        );
+        assert_eq!(
+            transclusion.localize("en", &vec!["female".to_string()]),
+            "She is happy"
+        );
+        assert_eq!(
+            transclusion.localize("en", &vec!["other".to_string()]),
+            "They are happy"
+        );
+    }
+
+    /// Test edge case: empty gender string
+    #[test]
+    fn test_gender_empty_string() {
+        let transclusion = Transclusion {
+            name: "GENDER".to_string(),
+            param: "$1".to_string(),
+            options: vec!["he".to_string(), "she".to_string(), "they".to_string()],
+        };
+        // Empty gender string is not "male" or "female" -> neutral (forms[2])
+        assert_eq!(transclusion.localize("en", &vec!["".to_string()]), "they");
     }
 }

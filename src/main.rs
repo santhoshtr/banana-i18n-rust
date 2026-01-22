@@ -193,4 +193,66 @@ fn main() {
         "Result: {}",
         i18n_verbose.localize("de-at", "farewell", &vec!["Welt".to_string()])
     );
+
+    // Example 7: GENDER magic word
+    println!("\n=== GENDER Examples ===");
+    let mut gender_messages: LocalizedMessages = LocalizedMessages::new();
+    gender_messages.with_message("pronoun", "{{GENDER:$1|He|She|They}} is here");
+    gender_messages.with_message("possessive", "This is {{GENDER:$1|his|her|their}} book");
+    gender_messages.with_message(
+        "descriptor",
+        "The {{GENDER:$1|strong|beautiful|wonderful}} person arrived",
+    );
+
+    let mut i18n_gender = I18n::new();
+    let i18n_gender = i18n_gender
+        .with_locale("en")
+        .with_messages_for_locale("en", gender_messages)
+        .with_verbosity(VerbosityLevel::Silent);
+
+    println!(
+        "Male: {}",
+        i18n_gender.localize("en", "pronoun", &vec!["male".to_string()])
+    );
+    println!(
+        "Female: {}",
+        i18n_gender.localize("en", "pronoun", &vec!["female".to_string()])
+    );
+    println!(
+        "Other: {}",
+        i18n_gender.localize("en", "pronoun", &vec!["neutral".to_string()])
+    );
+
+    println!(
+        "Male possessive: {}",
+        i18n_gender.localize("en", "possessive", &vec!["male".to_string()])
+    );
+    println!(
+        "Female possessive: {}",
+        i18n_gender.localize("en", "possessive", &vec!["female".to_string()])
+    );
+
+    println!(
+        "Male descriptor: {}",
+        i18n_gender.localize("en", "descriptor", &vec!["male".to_string()])
+    );
+    println!(
+        "Female descriptor: {}",
+        i18n_gender.localize("en", "descriptor", &vec!["female".to_string()])
+    );
+    println!(
+        "Other descriptor: {}",
+        i18n_gender.localize("en", "descriptor", &vec!["other".to_string()])
+    );
+
+    // Example 8: GENDER with case insensitivity
+    println!("\n=== GENDER Case Insensitivity Examples ===");
+    println!(
+        "MALE (uppercase): {}",
+        i18n_gender.localize("en", "pronoun", &vec!["MALE".to_string()])
+    );
+    println!(
+        "Female (mixed case): {}",
+        i18n_gender.localize("en", "pronoun", &vec!["Female".to_string()])
+    );
 }
