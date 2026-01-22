@@ -2,6 +2,13 @@
 name = "banana-i18n"
 version = "0.1.0"
 edition = "2024"
+description = "A Rust library for internationalization (i18n) with MediaWiki-style message formatting and localization."
+authors = ["Santhosh Thottingal <santhosh.thottingal@gmail.com>"]
+keywords = ["localization", "internationalization", "i18n", "l10n", "wikipedia"]
+categories = ["localization", "text-processing"]
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/santhoshtr/banana-i18n-rust"
 
 [dependencies]
 icu_locale = "2.1"
