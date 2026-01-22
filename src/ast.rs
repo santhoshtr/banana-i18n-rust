@@ -1,6 +1,9 @@
 use icu_locale::Locale;
 use icu_plurals::{PluralCategory, PluralRuleType, PluralRules};
 
+// Import for verbosity logging (will be used via crate::VerbosityLevel in context-aware methods)
+use crate::VerbosityLevel;
+
 // Type alias for convenience
 pub type AstNodeList = Vec<AstNode>;
 
@@ -212,6 +215,85 @@ impl Transclusion {
             .cloned()
             .unwrap_or_else(|| self.options.last().cloned().unwrap_or_default())
     }
+
+    /// Localize with fallback chain support and verbosity context
+    /// This is an internal method called from lib.rs with verbosity level
+    pub fn localize_with_context(
+        &self,
+        locale: &str,
+        values: &Vec<String>,
+        verbosity: VerbosityLevel,
+    ) -> String {
+        match self.name.to_uppercase().as_str() {
+            "PLURAL" => self.localize_plural_with_fallback(locale, values, verbosity),
+            // Future: Add GENDER, GRAMMAR, etc.
+            _ => {
+                // Unknown magic word - log warning and return original syntax
+                eprintln!("Warning: Unknown magic word '{}'", self.name);
+                format!(
+                    "{{{{{}:{}|{}}}}}",
+                    self.name,
+                    self.param,
+                    self.options.join("|")
+                )
+            }
+        }
+    }
+
+    /// Localize a PLURAL magic word with fallback chain support
+    /// This tries the requested locale and follows the fallback chain
+    fn localize_plural_with_fallback(
+        &self,
+        locale: &str,
+        values: &Vec<String>,
+        verbosity: VerbosityLevel,
+    ) -> String {
+        // Extract the count from param (e.g., "$1" -> values[0])
+        let count = if self.param.starts_with('$') {
+            // It's a placeholder reference
+            let index_str = &self.param[1..];
+            let index: usize = index_str.parse().unwrap_or(0);
+            if index > 0 && index <= values.len() {
+                values[index - 1].parse::<u32>().unwrap_or(0)
+            } else {
+                0
+            }
+        } else {
+            // Direct number
+            self.param.parse::<u32>().unwrap_or(0)
+        };
+
+        // Try to get the plural category using ICU rules with fallback chain
+        let form_index = match get_plural_form_index_with_fallback(
+            locale,
+            count,
+            self.options.len(),
+            verbosity,
+        ) {
+            Ok(index) => index,
+            Err(_e) => {
+                // Fall back to English plural rules
+                if verbosity >= VerbosityLevel::Normal {
+                    eprintln!(
+                        "[i18n] Warning: Failed to get plural form for locale '{}'. Using English rules.",
+                        locale
+                    );
+                }
+
+                // English rule: 1 = singular (index 0), others = plural (index 1 or last)
+                if count == 1 {
+                    0
+                } else {
+                    1.min(self.options.len() - 1)
+                }
+            }
+        };
+
+        self.options
+            .get(form_index)
+            .cloned()
+            .unwrap_or_else(|| self.options.last().cloned().unwrap_or_default())
+    }
 }
 
 /// Get the appropriate plural form index for a given locale and count
@@ -237,6 +319,55 @@ fn get_plural_form_index(locale_str: &str, count: u32, form_count: usize) -> Res
     let form_index = plural_category_to_index(category, form_count);
 
     Ok(form_index)
+}
+
+/// Get the appropriate plural form index for a given locale and count, with fallback chain support
+///
+/// Tries the requested locale first, then follows the fallback chain to find the first
+/// locale with working plural rules. Returns the form index or an error if none found.
+fn get_plural_form_index_with_fallback(
+    locale_str: &str,
+    count: u32,
+    form_count: usize,
+    verbosity: VerbosityLevel,
+) -> Result<usize, String> {
+    if form_count == 0 {
+        return Ok(0);
+    }
+
+    let fallback_chain = crate::fallbacks::resolve_locale_chain(locale_str);
+
+    for fallback_locale in &fallback_chain {
+        match get_plural_form_index(fallback_locale, count, form_count) {
+            Ok(index) => {
+                // Found working plural rules
+                if fallback_locale != locale_str && verbosity >= VerbosityLevel::Normal {
+                    eprintln!(
+                        "[i18n] Fallback: Using plural rules from locale '{}' (requested: '{}')",
+                        fallback_locale, locale_str
+                    );
+                }
+                if verbosity >= VerbosityLevel::Verbose {
+                    eprintln!(
+                        "[i18n] Plural fallback chain: {}",
+                        fallback_chain.join(" -> ")
+                    );
+                }
+                return Ok(index);
+            }
+            Err(_) => {
+                // This locale doesn't have plural rules, try next in chain
+                continue;
+            }
+        }
+    }
+
+    // No working plural rules found in entire chain
+    Err(format!(
+        "No plural rules found for locale '{}' or its fallbacks: {}",
+        locale_str,
+        fallback_chain.join(" -> ")
+    ))
 }
 
 impl WikiInternalLink {
@@ -586,5 +717,98 @@ mod tests {
         };
         // Should use 5 as the count, which is plural
         assert_eq!(transclusion.localize("en", &vec![]), "items");
+    }
+
+    /// Test plural with fallback chain (via localize_with_context)
+    /// de-at should fall back to de's plural rules
+    #[test]
+    fn test_plural_with_fallback_context() {
+        let transclusion = Transclusion {
+            name: "PLURAL".to_string(),
+            param: "$1".to_string(),
+            options: vec!["element".to_string(), "elements".to_string()],
+        };
+
+        // de-at doesn't have explicit ICU support, should fall back to de
+        // Using localize_with_context for fallback support
+        let result_silent = transclusion.localize_with_context(
+            "de-at",
+            &vec!["1".to_string()],
+            VerbosityLevel::Silent,
+        );
+        // Should get singular form
+        assert_eq!(result_silent, "element");
+
+        let result_plural = transclusion.localize_with_context(
+            "de-at",
+            &vec!["5".to_string()],
+            VerbosityLevel::Silent,
+        );
+        // Should get plural form
+        assert_eq!(result_plural, "elements");
+    }
+
+    /// Test plural with very specific locale that falls back through chain
+    /// Example: sr (Serbian) with specific script variants
+    #[test]
+    fn test_plural_with_complex_fallback() {
+        let transclusion = Transclusion {
+            name: "PLURAL".to_string(),
+            param: "$1".to_string(),
+            options: vec![
+                "jedan".to_string(), // One
+                "dva".to_string(),   // Few/Other
+                "pet".to_string(),   // Other
+            ],
+        };
+
+        // Serbian should have working plural rules or fall back through chain
+        let result1 = transclusion.localize_with_context(
+            "sr",
+            &vec!["1".to_string()],
+            VerbosityLevel::Silent,
+        );
+        assert!(!result1.is_empty());
+
+        let result5 = transclusion.localize_with_context(
+            "sr",
+            &vec!["5".to_string()],
+            VerbosityLevel::Silent,
+        );
+        assert!(!result5.is_empty());
+    }
+
+    /// Test that localize_with_context uses fallback chain for plural resolution
+    /// and logs appropriately based on verbosity level
+    #[test]
+    fn test_plural_fallback_with_verbosity_silent() {
+        let transclusion = Transclusion {
+            name: "PLURAL".to_string(),
+            param: "$1".to_string(),
+            options: vec!["item".to_string(), "items".to_string()],
+        };
+
+        // With Silent verbosity, should not log but still work
+        let _result = transclusion.localize_with_context(
+            "de-at",
+            &vec!["2".to_string()],
+            VerbosityLevel::Silent,
+        );
+        // Result should be computed without errors
+        assert_eq!(_result, "items");
+    }
+
+    /// Test unknown magic word in localize_with_context
+    #[test]
+    fn test_unknown_magic_word_with_context() {
+        let transclusion = Transclusion {
+            name: "UNKNOWN".to_string(),
+            param: "test".to_string(),
+            options: vec!["option1".to_string()],
+        };
+
+        let result = transclusion.localize_with_context("en", &vec![], VerbosityLevel::Silent);
+        // Should return the original syntax
+        assert_eq!(result, "{{UNKNOWN:test|option1}}");
     }
 }

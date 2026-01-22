@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::LazyLock;
 
 pub const LANGUAGE_FALLBACKS: &[(&str, &[&str])] = &[
@@ -427,6 +428,80 @@ pub fn get_fallbacks(lang: &str) -> Option<&'static [&'static str]> {
     FALLBACKS_MAP.get(lang).copied()
 }
 
+/// Resolve the complete fallback chain for a locale with cycle detection
+///
+/// Returns a Vec of locales to try in order:
+/// 1. The original locale
+/// 2. All fallbacks from LANGUAGE_FALLBACKS following the chain
+/// 3. Always ends with "en" (English) as the ultimate fallback
+///
+/// Cycle detection: If a cycle is encountered, breaks immediately and continues
+/// with remaining unique locales, preventing infinite loops.
+///
+/// # Arguments
+/// * `locale` - The language code to resolve (e.g., "de-at", "zh-cn")
+///
+/// # Returns
+/// A Vec of locale strings to try in order, always ending with "en"
+///
+/// # Examples
+/// ```
+/// // "de-at" → ["de-at", "de", "en"]
+/// // "zh-cn" → ["zh-cn", "zh-hans", "zh", "zh-hant", "en"]
+/// ```
+pub fn resolve_locale_chain(locale: &str) -> Vec<String> {
+    let locale_lower = locale.to_lowercase();
+    let mut chain = Vec::new();
+    let mut visited = HashSet::new();
+
+    // Start with the requested locale
+    chain.push(locale_lower.clone());
+    visited.insert(locale_lower.clone());
+
+    // Follow the fallback chain, detecting cycles
+    let mut current = locale_lower.clone();
+
+    loop {
+        match get_fallbacks(&current) {
+            Some(fallbacks) => {
+                let mut found_next = false;
+
+                for fallback in fallbacks {
+                    let fallback_lower = fallback.to_lowercase();
+
+                    // Cycle detection: skip if we've already visited this locale
+                    if visited.contains(&fallback_lower) {
+                        continue;
+                    }
+
+                    // Add to chain and mark as visited
+                    chain.push(fallback_lower.clone());
+                    visited.insert(fallback_lower.clone());
+                    current = fallback_lower;
+                    found_next = true;
+                    break; // Take the first unvisited fallback
+                }
+
+                if !found_next {
+                    // No more unvisited fallbacks, break the loop
+                    break;
+                }
+            }
+            None => {
+                // No fallbacks for current locale, end of chain
+                break;
+            }
+        }
+    }
+
+    // Always ensure English is at the end as ultimate fallback
+    if !visited.contains("en") {
+        chain.push("en".to_string());
+    }
+
+    chain
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -469,5 +544,78 @@ mod tests {
             "HashMap lookups too slow: {:?}",
             duration
         );
+    }
+
+    #[test]
+    fn test_resolve_locale_chain_simple() {
+        let chain = resolve_locale_chain("de-at");
+        assert_eq!(chain, vec!["de-at", "de", "en"]);
+    }
+
+    #[test]
+    fn test_resolve_locale_chain_complex() {
+        let chain = resolve_locale_chain("zh-cn");
+        // zh-cn -> zh-hans -> zh (no more unique fallbacks since zh-hant would be visited already via other paths)
+        // The exact chain depends on how fallback resolution works
+        assert!(chain.len() >= 3, "Chain should have at least 3 elements");
+        assert_eq!(chain[0], "zh-cn");
+        assert_eq!(chain[chain.len() - 1], "en");
+    }
+
+    #[test]
+    fn test_resolve_locale_chain_no_fallback() {
+        let chain = resolve_locale_chain("en");
+        assert_eq!(chain, vec!["en"]);
+    }
+
+    #[test]
+    fn test_resolve_locale_chain_cycle_detection() {
+        // Test with a locale that has fallbacks
+        // The resolve_locale_chain should handle any potential cycles gracefully
+        let chain = resolve_locale_chain("sr");
+        // Should contain sr and its fallbacks, ending with en
+        assert!(chain.len() >= 2);
+        assert_eq!(chain[0], "sr");
+        assert_eq!(chain[chain.len() - 1], "en");
+        // Check no duplicates
+        let mut seen = HashSet::new();
+        for locale in &chain {
+            assert!(seen.insert(locale), "Duplicate locale in chain: {}", locale);
+        }
+    }
+
+    #[test]
+    fn test_resolve_locale_chain_unknown_locale() {
+        // Unknown locales should still return at least themselves and en
+        let chain = resolve_locale_chain("unknown-locale-xyz");
+        assert_eq!(chain, vec!["unknown-locale-xyz", "en"]);
+    }
+
+    #[test]
+    fn test_resolve_locale_chain_case_insensitive() {
+        // Locale codes should be case-insensitive
+        let chain1 = resolve_locale_chain("DE-AT");
+        let chain2 = resolve_locale_chain("de-at");
+        assert_eq!(chain1, chain2);
+        assert_eq!(chain1, vec!["de-at", "de", "en"]);
+    }
+
+    #[test]
+    fn test_resolve_locale_chain_no_duplicates() {
+        // Ensure resolve_locale_chain never returns duplicates
+        let test_locales = vec!["de-at", "fr", "ru", "zh-cn", "pt", "pt-br"];
+
+        for locale in test_locales {
+            let chain = resolve_locale_chain(locale);
+            let mut seen = HashSet::new();
+            for loc in chain {
+                assert!(
+                    seen.insert(loc.clone()),
+                    "Duplicate in chain for locale {}: {}",
+                    locale,
+                    loc
+                );
+            }
+        }
     }
 }

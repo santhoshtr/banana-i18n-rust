@@ -1,4 +1,4 @@
-use banana_i18n::{I18n, LocalizedMessages};
+use banana_i18n::{I18n, LocalizedMessages, VerbosityLevel};
 
 fn main() {
     // Example 1: English
@@ -18,7 +18,8 @@ fn main() {
     let mut i18n = I18n::new();
     let i18n = i18n
         .with_locale("en")
-        .with_messages_for_locale("en", en_messages);
+        .with_messages_for_locale("en", en_messages)
+        .with_verbosity(VerbosityLevel::Silent);
 
     println!(
         "Localized: {}",
@@ -52,7 +53,8 @@ fn main() {
     let mut i18n_ru = I18n::new();
     let i18n_ru = i18n_ru
         .with_locale("ru")
-        .with_messages_for_locale("ru", ru_messages);
+        .with_messages_for_locale("ru", ru_messages)
+        .with_verbosity(VerbosityLevel::Silent);
 
     println!(
         "Russian (1): {}",
@@ -82,7 +84,8 @@ fn main() {
     let mut i18n_fr = I18n::new();
     let i18n_fr = i18n_fr
         .with_locale("fr")
-        .with_messages_for_locale("fr", fr_messages);
+        .with_messages_for_locale("fr", fr_messages)
+        .with_verbosity(VerbosityLevel::Silent);
 
     println!(
         "French (1): {}",
@@ -91,5 +94,103 @@ fn main() {
     println!(
         "French (5): {}",
         i18n_fr.localize("fr", "articles", &vec!["5".to_string()])
+    );
+
+    // Example 4: Fallback chain demonstration - de-at to de
+    println!("\n=== Fallback Chain Examples (de-at -> de -> en) ===");
+    let mut de_messages: LocalizedMessages = LocalizedMessages::new();
+    de_messages.with_message("greeting", "Guten Tag, $1!");
+    de_messages.with_message(
+        "items",
+        "Es {{PLURAL:$1|ist|sind}} $1 {{PLURAL:$1|Element|Elemente}} in der Kiste",
+    );
+
+    let mut en_messages_copy: LocalizedMessages = LocalizedMessages::new();
+    en_messages_copy.with_message("greeting", "Hello, $1!");
+    en_messages_copy.with_message("farewell", "Goodbye, $1!");
+
+    let mut i18n_de = I18n::new();
+    let i18n_de = i18n_de
+        .with_locale("en")
+        .with_messages_for_locale("en", en_messages_copy)
+        .with_messages_for_locale("de", de_messages)
+        .with_verbosity(VerbosityLevel::Normal);
+
+    println!("\nRequesting de-at locale (has fallbacks to de and en):");
+    println!(
+        "de-at greeting (fallback to de): {}",
+        i18n_de.localize("de-at", "greeting", &vec!["Welt".to_string()])
+    );
+
+    println!(
+        "de-at plural (fallback to de): {}",
+        i18n_de.localize("de-at", "items", &vec!["1".to_string()])
+    );
+
+    println!(
+        "de-at plural (fallback to de): {}",
+        i18n_de.localize("de-at", "items", &vec!["5".to_string()])
+    );
+
+    // Message only in English (fallback through de)
+    println!(
+        "de-at farewell (fallback to en): {}",
+        i18n_de.localize("de-at", "farewell", &vec!["Welt".to_string()])
+    );
+
+    // Example 5: Complex Chinese fallback chain
+    println!("\n=== Complex Fallback Chain (zh-cn -> zh-hans -> zh -> zh-hant -> en) ===");
+    let mut zh_hans_messages: LocalizedMessages = LocalizedMessages::new();
+    zh_hans_messages.with_message("greeting", "你好，$1");
+    zh_hans_messages.with_message("books", "有 {{PLURAL:$1|一|}} $1 {{PLURAL:$1|本书|本书}}");
+
+    let mut en_messages_copy2: LocalizedMessages = LocalizedMessages::new();
+    en_messages_copy2.with_message("greeting", "Hello, $1!");
+    en_messages_copy2.with_message("farewell", "Goodbye, $1!");
+
+    let mut i18n_zh = I18n::new();
+    let i18n_zh = i18n_zh
+        .with_locale("en")
+        .with_messages_for_locale("en", en_messages_copy2)
+        .with_messages_for_locale("zh-hans", zh_hans_messages)
+        .with_verbosity(VerbosityLevel::Normal);
+
+    println!("\nRequesting zh-cn locale (fallback chain active):");
+    println!(
+        "zh-cn greeting (via zh-hans): {}",
+        i18n_zh.localize("zh-cn", "greeting", &vec!["世界".to_string()])
+    );
+
+    println!(
+        "zh-cn books (1 book): {}",
+        i18n_zh.localize("zh-cn", "books", &vec!["1".to_string()])
+    );
+
+    println!(
+        "zh-cn books (5 books): {}",
+        i18n_zh.localize("zh-cn", "books", &vec!["5".to_string()])
+    );
+
+    println!(
+        "zh-cn farewell (fallback to en): {}",
+        i18n_zh.localize("zh-cn", "farewell", &vec!["世界".to_string()])
+    );
+
+    // Example 6: Verbose logging to show fallback chain resolution
+    println!("\n=== Verbose Logging Example ===");
+    let mut en_messages_copy3: LocalizedMessages = LocalizedMessages::new();
+    en_messages_copy3.with_message("greeting", "Hello, $1!");
+    en_messages_copy3.with_message("farewell", "Goodbye, $1!");
+
+    let mut i18n_verbose = I18n::new();
+    let i18n_verbose = i18n_verbose
+        .with_locale("en")
+        .with_messages_for_locale("en", en_messages_copy3)
+        .with_verbosity(VerbosityLevel::Verbose);
+
+    println!("With Verbose logging (STDERR shows fallback info):");
+    println!(
+        "Result: {}",
+        i18n_verbose.localize("de-at", "farewell", &vec!["Welt".to_string()])
     );
 }

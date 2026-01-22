@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 pub mod ast;
+pub mod fallbacks;
 pub mod parser;
 
 // Re-export AST types for convenient access
@@ -8,7 +9,19 @@ pub use ast::{
     AstNode, AstNodeList, Localizable, Placeholder, Transclusion, WikiExternalLink,
     WikiInternalLink,
 };
+pub use fallbacks::get_fallbacks;
 pub use parser::Parser;
+
+/// Verbosity level for debug logging during fallback resolution
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum VerbosityLevel {
+    /// No debug logging
+    Silent = 0,
+    /// Log only when fallbacks are used (default)
+    Normal = 1,
+    /// Log detailed information about fallback resolution
+    Verbose = 2,
+}
 
 pub struct LocalizedMessages(pub HashMap<String, String>);
 impl LocalizedMessages {
@@ -45,6 +58,7 @@ pub struct I18n {
     //      messages["it"]["greeting"] = "Ciao"
     messages: HashMap<String, LocalizedMessages>,
     default_locale: String,
+    verbosity: VerbosityLevel,
 }
 
 impl I18n {
@@ -52,6 +66,7 @@ impl I18n {
         I18n {
             messages: HashMap::new(),
             default_locale: "en".to_string(),
+            verbosity: VerbosityLevel::Normal,
         }
     }
 
@@ -62,6 +77,15 @@ impl I18n {
 
     pub fn get_default_locale(&self) -> &str {
         &self.default_locale
+    }
+
+    pub fn with_verbosity(&mut self, verbosity: VerbosityLevel) -> &mut Self {
+        self.verbosity = verbosity;
+        self
+    }
+
+    pub fn get_verbosity(&self) -> VerbosityLevel {
+        self.verbosity
     }
     pub fn with_messages_for_locale(
         &mut self,
@@ -83,16 +107,57 @@ impl I18n {
     }
 
     pub fn get_message(&self, locale: &str, key: &str) -> String {
+        // Try to get message from requested locale first
         if let Some(messages) = self.messages.get(locale) {
-            return messages
-                .get_message(key)
-                .unwrap_or(&key.to_string())
-                .to_string();
+            if let Some(message) = messages.get_message(key) {
+                return message.clone();
+            }
+        }
+
+        // If not found, follow the fallback chain
+        let fallback_chain = fallbacks::resolve_locale_chain(locale);
+
+        // Skip the first one since we already tried it
+        for fallback_locale in fallback_chain.iter().skip(1) {
+            if let Some(messages) = self.messages.get(fallback_locale) {
+                if let Some(message) = messages.get_message(key) {
+                    if self.verbosity >= VerbosityLevel::Normal {
+                        eprintln!(
+                            "[i18n] Fallback: Using message '{}' from locale '{}' (requested: '{}')",
+                            key, fallback_locale, locale
+                        );
+                    }
+                    if self.verbosity >= VerbosityLevel::Verbose {
+                        eprintln!("[i18n] Fallback chain: {}", fallback_chain.join(" -> "));
+                    }
+                    return message.clone();
+                }
+            }
+        }
+
+        // No message found in any fallback locale, return the key
+        if self.verbosity >= VerbosityLevel::Verbose {
+            eprintln!(
+                "[i18n] No message found for '{}' in locale '{}' or its fallbacks: {}",
+                key,
+                locale,
+                fallback_chain.join(" -> ")
+            );
         }
         key.to_string()
     }
 
     pub fn localize(&self, locale: &str, key: &str, values: &Vec<String>) -> String {
+        self.localize_internal(locale, key, values, true)
+    }
+
+    fn localize_internal(
+        &self,
+        locale: &str,
+        key: &str,
+        values: &Vec<String>,
+        _log_fallback: bool,
+    ) -> String {
         let message = self.get_message(locale, key);
         let mut parser = parser::Parser::new(&message);
         let ast: AstNodeList = parser.parse();
@@ -105,7 +170,12 @@ impl I18n {
                     result.push_str(&placeholder.localize(locale, values).as_str());
                 }
                 AstNode::Transclusion(transclusion) => {
-                    result.push_str(&transclusion.localize(locale, values).as_str());
+                    // For transclusions, pass verbosity via context
+                    result.push_str(
+                        transclusion
+                            .localize_with_context(locale, values, self.verbosity)
+                            .as_str(),
+                    );
                 }
                 AstNode::InternalLink(link) => {
                     result.push_str(&link.to_string());
@@ -165,5 +235,93 @@ mod tests {
 
         i18n.with_locale("ES");
         assert_eq!(i18n.get_default_locale(), "es");
+    }
+
+    #[test]
+    fn test_message_fallback_simple() {
+        // Test fallback from de-at to de to en
+        let mut de_messages: LocalizedMessages = LocalizedMessages::new();
+        de_messages.with_message("greeting", "Guten Tag, $1!");
+
+        let mut en_messages: LocalizedMessages = LocalizedMessages::new();
+        en_messages.with_message("greeting", "Hello, $1!");
+        en_messages.with_message("farewell", "Goodbye, $1!");
+
+        let mut i18n = I18n::new();
+        i18n.with_locale("en")
+            .with_messages_for_locale("en", en_messages)
+            .with_messages_for_locale("de", de_messages)
+            .with_verbosity(VerbosityLevel::Silent);
+
+        // Message exists for de-at's fallback (de)
+        assert_eq!(
+            i18n.localize("de-at", "greeting", &vec!["Welt".to_string()]),
+            "Guten Tag, Welt!"
+        );
+
+        // Message doesn't exist for de-at, but exists in en fallback
+        assert_eq!(
+            i18n.localize("de-at", "farewell", &vec!["Welt".to_string()]),
+            "Goodbye, Welt!"
+        );
+    }
+
+    #[test]
+    fn test_message_fallback_missing_all() {
+        // Test when message is missing from all locales
+        let mut en_messages: LocalizedMessages = LocalizedMessages::new();
+        en_messages.with_message("greeting", "Hello, $1!");
+
+        let mut i18n = I18n::new();
+        i18n.with_locale("en")
+            .with_messages_for_locale("en", en_messages)
+            .with_verbosity(VerbosityLevel::Silent);
+
+        // Non-existent message should return the key
+        assert_eq!(i18n.localize("en", "nonexistent", &vec![]), "nonexistent");
+    }
+
+    #[test]
+    fn test_message_fallback_complex_chain() {
+        // Test with a complex fallback chain like zh-cn
+        let mut zh_hant_messages: LocalizedMessages = LocalizedMessages::new();
+        zh_hant_messages.with_message("title", "繁體");
+
+        let mut zh_hans_messages: LocalizedMessages = LocalizedMessages::new();
+        zh_hans_messages.with_message("title", "简体");
+        zh_hans_messages.with_message("greeting", "你好 $1");
+
+        let mut en_messages: LocalizedMessages = LocalizedMessages::new();
+        en_messages.with_message("greeting", "Hello $1");
+
+        let mut i18n = I18n::new();
+        i18n.with_locale("en")
+            .with_messages_for_locale("en", en_messages)
+            .with_messages_for_locale("zh-hans", zh_hans_messages)
+            .with_messages_for_locale("zh-hant", zh_hant_messages)
+            .with_verbosity(VerbosityLevel::Silent);
+
+        // zh-cn should fall back to zh-hans
+        assert_eq!(
+            i18n.localize("zh-cn", "greeting", &vec!["世界".to_string()]),
+            "你好 世界"
+        );
+
+        // zh-cn should eventually reach en for missing messages
+        assert_eq!(i18n.get_message("zh-cn", "title"), "简体");
+    }
+
+    #[test]
+    fn test_verbosity_levels() {
+        // Test that verbosity level is properly set and retrieved
+        let mut i18n = I18n::new();
+
+        assert_eq!(i18n.get_verbosity(), VerbosityLevel::Normal);
+
+        i18n.with_verbosity(VerbosityLevel::Silent);
+        assert_eq!(i18n.get_verbosity(), VerbosityLevel::Silent);
+
+        i18n.with_verbosity(VerbosityLevel::Verbose);
+        assert_eq!(i18n.get_verbosity(), VerbosityLevel::Verbose);
     }
 }
