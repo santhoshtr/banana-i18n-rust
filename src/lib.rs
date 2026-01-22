@@ -44,13 +44,24 @@ pub struct I18n {
     //      messages["de"]["greeting"] = "Hallo"
     //      messages["it"]["greeting"] = "Ciao"
     messages: HashMap<String, LocalizedMessages>,
+    default_locale: String,
 }
 
 impl I18n {
     pub fn new() -> Self {
         I18n {
             messages: HashMap::new(),
+            default_locale: "en".to_string(),
         }
+    }
+
+    pub fn with_locale(&mut self, locale: &str) -> &mut Self {
+        self.default_locale = locale.to_lowercase();
+        self
+    }
+
+    pub fn get_default_locale(&self) -> &str {
+        &self.default_locale
     }
     pub fn with_messages_for_locale(
         &mut self,
@@ -91,10 +102,10 @@ impl I18n {
             match node {
                 AstNode::Text(text) => result.push_str(&text),
                 AstNode::Placeholder(placeholder) => {
-                    result.push_str(&placeholder.localize(values).as_str());
+                    result.push_str(&placeholder.localize(locale, values).as_str());
                 }
                 AstNode::Transclusion(transclusion) => {
-                    result.push_str(&transclusion.localize(values).as_str());
+                    result.push_str(&transclusion.localize(locale, values).as_str());
                 }
                 AstNode::InternalLink(link) => {
                     result.push_str(&link.to_string());
@@ -123,7 +134,8 @@ mod tests {
         );
 
         let mut i18n = I18n::new();
-        i18n.with_messages_for_locale("en", en_messages);
+        i18n.with_locale("en")
+            .with_messages_for_locale("en", en_messages);
 
         assert_eq!(
             i18n.localize("en", "greeting", &vec!["World".to_string()]),
@@ -141,5 +153,17 @@ mod tests {
             i18n.localize("en", "plural", &vec!["1".to_string()]),
             "There is 1 item in the box"
         );
+    }
+
+    #[test]
+    fn test_default_locale() {
+        let mut i18n = I18n::new();
+        assert_eq!(i18n.get_default_locale(), "en");
+
+        i18n.with_locale("fr");
+        assert_eq!(i18n.get_default_locale(), "fr");
+
+        i18n.with_locale("ES");
+        assert_eq!(i18n.get_default_locale(), "es");
     }
 }

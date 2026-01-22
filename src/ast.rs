@@ -42,11 +42,11 @@ pub struct WikiExternalLink {
 
 /// Trait for elements that can be localized with parameter values
 pub trait Localizable {
-    fn localize(&self, values: &Vec<String>) -> String;
+    fn localize(&self, locale: &str, values: &Vec<String>) -> String;
 }
 
 impl Localizable for Placeholder {
-    fn localize(&self, values: &Vec<String>) -> String {
+    fn localize(&self, _locale: &str, values: &Vec<String>) -> String {
         // Placeholders are 1-indexed: $1 = values[0], $2 = values[1], etc.
         if self.index > 0 && self.index <= values.len() {
             values[self.index - 1].clone()
@@ -58,9 +58,9 @@ impl Localizable for Placeholder {
 }
 
 impl Localizable for Transclusion {
-    fn localize(&self, values: &Vec<String>) -> String {
+    fn localize(&self, locale: &str, values: &Vec<String>) -> String {
         match self.name.to_uppercase().as_str() {
-            "PLURAL" => self.localize_plural(values),
+            "PLURAL" => self.localize_plural(locale, values),
             // Future: Add GENDER, GRAMMAR, etc.
             _ => {
                 // Unknown magic word - log warning and return original syntax
@@ -77,7 +77,7 @@ impl Localizable for Transclusion {
 }
 
 impl Transclusion {
-    fn localize_plural(&self, values: &Vec<String>) -> String {
+    fn localize_plural(&self, _locale: &str, values: &Vec<String>) -> String {
         // Extract the count from param (e.g., "$1" -> values[0])
         let count = if self.param.starts_with('$') {
             // It's a placeholder reference
@@ -94,6 +94,7 @@ impl Transclusion {
         };
 
         // Simple English plural rule: 1 = singular (index 0), others = plural (index 1 or last)
+        // TODO: Use language-specific plural rules based on the locale parameter
         let form_index = if count == 1 {
             0
         } else {
@@ -141,14 +142,14 @@ mod tests {
     fn test_placeholder_localize() {
         let placeholder = Placeholder { index: 1 };
         let values = vec!["World".to_string()];
-        assert_eq!(placeholder.localize(&values), "World");
+        assert_eq!(placeholder.localize("en", &values), "World");
     }
 
     #[test]
     fn test_placeholder_missing_value() {
         let placeholder = Placeholder { index: 5 };
         let values = vec!["World".to_string()];
-        assert_eq!(placeholder.localize(&values), "$5");
+        assert_eq!(placeholder.localize("en", &values), "$5");
     }
 
     #[test]
@@ -159,7 +160,7 @@ mod tests {
             options: vec!["item".to_string(), "items".to_string()],
         };
         let values = vec!["1".to_string()];
-        assert_eq!(transclusion.localize(&values), "item");
+        assert_eq!(transclusion.localize("en", &values), "item");
     }
 
     #[test]
@@ -170,7 +171,7 @@ mod tests {
             options: vec!["item".to_string(), "items".to_string()],
         };
         let values = vec!["5".to_string()];
-        assert_eq!(transclusion.localize(&values), "items");
+        assert_eq!(transclusion.localize("en", &values), "items");
     }
 
     #[test]
@@ -181,7 +182,7 @@ mod tests {
             options: vec!["item".to_string(), "items".to_string()],
         };
         let values = vec!["0".to_string()];
-        assert_eq!(transclusion.localize(&values), "items");
+        assert_eq!(transclusion.localize("en", &values), "items");
     }
 
     #[test]
@@ -193,7 +194,7 @@ mod tests {
             options: vec!["one".to_string(), "two".to_string(), "other".to_string()],
         };
         let values = vec!["3".to_string()];
-        assert_eq!(transclusion.localize(&values), "two"); // Falls back to the one-index
+        assert_eq!(transclusion.localize("en", &values), "two"); // Falls back to the one-index
     }
 
     #[test]

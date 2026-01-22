@@ -16,7 +16,9 @@ fn main() {
     );
 
     let mut i18n = I18n::new();
-    let i18n = i18n.with_messages_for_locale("en", en_messages);
+    let i18n = i18n
+        .with_locale("en")
+        .with_messages_for_locale("en", en_messages);
 
     println!(
         "Localized: {}",
