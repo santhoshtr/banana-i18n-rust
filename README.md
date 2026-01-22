@@ -1,4 +1,4 @@
-# banana-i18n-rust
+ banana-i18n
 
 A Rust library for internationalization (i18n) with MediaWiki-style message formatting and localization.
 
@@ -174,11 +174,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load messages from directory
     let mut i18n = I18n::new();
     i18n.load_all_locales("i18n")?;
-    
+
     // Get a message with locale fallback
     let message = i18n.get_message("en", "greeting");
     println!("{}", message); // "Hello, World!" or key name
-    
+
     Ok(())
 }
 ```
@@ -225,80 +225,6 @@ Messages are stored in JSON files with locale codes as filenames:
   - Supports wiki links ([[link]], [[link|display]])
   - Supports external links ([http://url], [http://url text])
 
-### Supported Locales
-
-The library includes predefined fallback chains for:
-
-- English (en)
-- German (de, de-at, de-ch)
-- Russian (ru)
-- Polish (pl)
-- Arabic (ar)
-- French (fr, fr-ca)
-- Chinese (zh, zh-hans, zh-hant)
-- And 50+ more languages via CLDR
-
-## Development
-
-### Build
-
-```bash
-cargo build           # Debug build
-cargo build --release # Release build
-```
-
-### Tests
-
-```bash
-cargo test --verbose         # Run all tests with output
-cargo test test_name         # Run a specific test
-cargo test -- --nocapture    # Run tests showing println! output
-```
-
-### Format & Lint
-
-```bash
-cargo fmt              # Format code
-cargo clippy           # Lint code
-cargo check            # Check for errors without building
-```
-
-## Code Style
-
-- **Edition**: Rust 2024
-- **Format**: Enforced with `cargo fmt`
-- **Linting**: Follows clippy recommendations
-- **Imports**: Use absolute paths (prefer `crate::` for internal modules)
-- **Naming**:
-  - Modules: `lowercase_with_underscores`
-  - Types: `PascalCase`
-  - Functions: `snake_case`
-  - Constants: `SCREAMING_SNAKE_CASE`
-
-## Project Structure
-
-```
-banana-i18n-rust/
-├── src/
-│   ├── lib.rs         # Main library (public API)
-│   ├── main.rs        # CLI tool entry point
-│   ├── ast.rs         # AST nodes and localization logic
-│   ├── parser.rs      # MediaWiki format parser
-│   ├── fallbacks.rs   # Locale fallback chain resolution
-│   └── loader.rs      # JSON file loading
-├── i18n/              # Sample message files
-│   ├── en.json        # English messages
-│   ├── ru.json        # Russian messages
-│   ├── de.json        # German messages
-│   ├── fr.json        # French messages
-│   └── zh-hans.json   # Simplified Chinese messages
-├── Cargo.toml         # Project manifest
-├── Cargo.lock         # Dependency lock file
-└── README.md          # This file
-```
-
-## Architecture
-
 ### Core Components
 
 - **I18n struct**: Main entry point managing localized messages by locale
@@ -322,50 +248,6 @@ banana-i18n-rust/
    - Evaluate GENDER forms based on provided gender
 3. **Fallback** - If message not found, try fallback locale chain
 
-### Error Handling
-
-The library uses `Option<T>` for fallible operations:
-
-- `get_message(key)` - Returns `Option<&String>` (None if not found)
-- `get(key)` - Returns `String` (uses key as fallback if not found)
-- Missing messages default to the message key itself
-
-## Dependencies
-
-### Core Dependencies
-
-- **tree-sitter-wikitext** (v0.1.1) - Parses MediaWiki/wikitext format
-- **icu_plurals** (v2.1.1) - Provides ICU CLDR plural rules for 56+ languages
-
-### Development Dependencies
-
-- **serde** (v1.0.228) - Serialization framework
-- **serde_json** (v1.0.149) - JSON support
-
-## Testing
-
-The project includes 69 comprehensive tests covering:
-
-- **Parser** - MediaWiki format parsing
-- **PLURAL** - All language plural rules, edge cases, fallback chains
-- **GENDER** - All gender forms and edge cases
-- **Fallbacks** - Locale chain resolution and cycle detection
-- **Integration** - End-to-end localization workflow
-
-Run tests:
-```bash
-cargo test --verbose
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make changes and ensure tests pass: `cargo test`
-4. Format code: `cargo fmt`
-5. Check with clippy: `cargo clippy`
-6. Submit a pull request
-
 ## License
 
 MIT License - See LICENSE file for details
@@ -376,19 +258,3 @@ MIT License - See LICENSE file for details
 - [ICU CLDR Plural Rules](https://cldr.unicode.org/index/cldr-spec/plural-rules)
 - [ISO 639-1 Language Codes](https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes)
 
-## Support
-
-For issues, questions, or suggestions:
-
-1. Check existing issues on GitHub
-2. Create a new issue with:
-   - Rust version (`rustc --version`)
-   - OS and environment details
-   - Minimal reproducible example
-   - Expected vs actual behavior
-
-## Acknowledgments
-
-- Built with [tree-sitter](https://tree-sitter.github.io/tree-sitter/) for parsing
-- Uses [ICU CLDR data](https://cldr.unicode.org/) for pluralization rules
-- Inspired by [MediaWiki's i18n system](https://www.mediawiki.org/wiki/Localisation)
