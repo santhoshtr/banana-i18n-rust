@@ -27,6 +27,7 @@
 /// ```
 pub mod anchor;
 pub mod error;
+pub mod expansion;
 pub mod gender_expansion;
 pub mod plural_expansion;
 
@@ -35,5 +36,6 @@ pub use anchor::{
     replace_placeholders_with_anchors,
 };
 pub use error::{MtError, MtResult};
+pub use expansion::{calculate_variant_count, expand_all_variants};
 pub use gender_expansion::{GenderForm, expand_gender_variants, get_gender_forms};
 pub use plural_expansion::{expand_plural_variants, get_plural_forms_for_language};

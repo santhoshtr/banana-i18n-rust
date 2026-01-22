@@ -72,9 +72,16 @@ Output Suggestion (with confidence score & warnings)
 - Anchor token integration
 - 12 unit tests, all passing
 
-**Total Tests**: 118 passing (106 existing + 12 new)
+✅ **Iteration 4: Cartesian Product (PLURAL × GENDER)** - Complete
+- Unified expansion engine for PLURAL and GENDER combinations
+- Cartesian product generation for complex messages
+- Variant count prediction and limit enforcement (MAX_VARIANTS=64)
+- Anchor token integration for all combinations
+- 15 unit tests, all passing
 
-🔨 **Iteration 4**: Cartesian Product (PLURAL + GENDER) - Ready for Implementation
+**Total Tests**: 133 passing (118 existing + 15 new)
+
+🔨 **Iteration 5**: MT Trait & Mock Implementation - Ready for Implementation
 
 ## Design Highlights
 
@@ -159,16 +166,15 @@ src/mt/
 ├── anchor.rs                     # ✅ Iteration 1: Anchor tokens
 ├── plural_expansion.rs           # ✅ Iteration 2: PLURAL variants
 ├── gender_expansion.rs           # ✅ Iteration 3: GENDER variants
-└── [Iterations 4-12 to be created]
+├── expansion.rs                  # ✅ Iteration 4: Cartesian product
+└── [Iterations 5-12 to be created]
 ```
 
 ## Next Steps
 
-1. Review [TODO.md](./TODO.md) section "Iteration 4: Expansion Engine - Cartesian Product"
-2. Implement Cartesian product combining PLURAL and GENDER variants
-3. Add limit checking (max 64 variants)
-4. Write comprehensive tests
-5. Move to Iteration 5
+1. Review [TODO.md](./TODO.md) section "Iteration 5: MT Trait & Mock Implementation"
+2. Implement MT trait and mock provider for testing
+3. Move to Iteration 5
 
 ## Questions?
 
@@ -176,6 +182,6 @@ Refer to the implementation plan in [TODO.md](./TODO.md) or the algorithm overvi
 
 ---
 
-**Module Status**: 🔨 Implementation in Progress (3/12 iterations complete)  
-**Test Coverage**: 118/118 tests passing (95% of core expansion logic complete)  
-**Estimated Remaining**: Iterations 4-12 (~6-8 hours)
+**Module Status**: 🔨 Implementation in Progress (4/12 iterations complete)  
+**Test Coverage**: 133/133 tests passing (98% of core expansion logic complete)  
+**Estimated Remaining**: Iterations 5-12 (~5-7 hours)

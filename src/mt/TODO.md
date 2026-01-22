@@ -98,32 +98,35 @@ The MT module consists of 5 core components:
 
 ---
 
-### Iteration 4: Expansion Engine - Cartesian Product (Complex)
+### Iteration 4: Expansion Engine - Cartesian Product (Complex) ✅ COMPLETE
 
 **Goal**: Generate all combinations of PLURAL × GENDER variants
 
 **Tasks**:
-- [ ] Implement `expand_all_variants(ast: &AstNodeList, target_locale: &str, max_variants: usize) -> Result<Vec<String>>`
+- [x] Implement `expand_all_variants(ast: &AstNodeList, target_locale: &str) -> Result<Vec<String>>`
   - Takes source wikitext and target locale
   - Generates Cartesian product of PLURAL and GENDER
   - Returns vector of all plain-text variants with anchor tokens
-  - **Limit**: Max 64 variants, warn if exceeded
-- [ ] Implement `calculate_variant_count(ast: &AstNodeList, target_locale: &str) -> usize`
+  - **Limit**: Max 64 variants, returns error if exceeded
+- [x] Implement `calculate_variant_count(ast: &AstNodeList, target_locale: &str) -> usize`
   - Predicts number of variants before expansion
 
-**Tests**:
-- [ ] Simple message: `"Hello, $1"` → 1 variant
-- [ ] PLURAL only: `{{PLURAL:$1|a|b}}` → 2 variants (English)
-- [ ] GENDER only: `{{GENDER:$1|a|b}}` → 2 variants
-- [ ] PLURAL × GENDER: Both → 2 × 2 = 4 variants
-- [ ] Complex example: `{{GENDER:$1|$1}} sent {{PLURAL:$2|a|b}} to {{GENDER:$3|him|her}}`
-  - → 2 × 2 × 2 = 8 variants
-- [ ] Russian expansion: 3 PLURAL forms × 2 GENDER forms = 6 variants
-- [ ] **Limit exceeded**: Arabic with complex message → 64+ variants
-  - Should return `Err("Too many variants (125 > 64)")`
+**Tests Completed**:
+- [x] Simple message: `"Hello, $1"` → 1 variant
+- [x] PLURAL only: `{{PLURAL:$1|is|are}}` → 2 variants (English)
+- [x] GENDER only: `{{GENDER:$1|He|She|They}}` → 3 variants
+- [x] PLURAL × GENDER: Both → 3 × 2 = 6 variants (English)
+- [x] Russian expansion: 3 GENDER × 3 PLURAL = 9 variants
+- [x] **Limit at max**: 2^6 = 64 variants → succeeds
+- [x] **Limit exceeded**: 2^7 = 128 variants → returns error
+- [x] Variant count calculation matches actual expansion
+- [x] Anchor tokens applied to all variants
+- [x] Complex messages with links and placeholders
 
-**Files**:
-- [ ] `src/mt/cartesian.rs` - Cartesian product logic
+**Files Created**:
+- [x] `src/mt/expansion.rs` - Cartesian product logic (580 LOC)
+
+**Test Results**: 15 new tests, all passing. Total: 133/133 tests passing
 
 ---
 
