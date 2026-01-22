@@ -17,6 +17,8 @@ version = "0.1.0"
 dependencies = [
  "icu_locale",
  "icu_plurals",
+ "serde",
+ "serde_json",
  "tree-sitter",
  "tree-sitter-wikitext",
 ]

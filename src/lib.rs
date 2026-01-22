@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 pub mod ast;
 pub mod fallbacks;
+pub mod loader;
 pub mod parser;
 
 // Re-export AST types for convenient access
@@ -10,6 +11,7 @@ pub use ast::{
     WikiInternalLink,
 };
 pub use fallbacks::get_fallbacks;
+pub use loader::{load_all_messages_from_dir, load_messages_from_file};
 pub use parser::Parser;
 
 /// Verbosity level for debug logging during fallback resolution

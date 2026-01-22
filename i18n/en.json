@@ -1,0 +1,15 @@
+{
+    "@metadata": {
+        "authors": ["Example Team"],
+        "last-updated": "2026-01-22",
+        "locale": "en"
+    },
+    "greeting": "Hello, $1!",
+    "farewell": "Goodbye, $1!",
+    "plural": "There {{PLURAL:$1|is|are}} $1 {{PLURAL:$1|item|items}} in the box",
+    "plural_with_link": "There {{PLURAL:$1|is|are}} $1 {{PLURAL:$1|item|items}} in the [[box]]",
+    "items": "Es {{PLURAL:$1|ist|sind}} $1 {{PLURAL:$1|Element|Elemente}} in der Kiste",
+    "pronoun": "{{GENDER:$1|He|She|They}} is here",
+    "possessive": "This is {{GENDER:$1|his|her|their}} book",
+    "descriptor": "The {{GENDER:$1|strong|beautiful|wonderful}} person arrived"
+}

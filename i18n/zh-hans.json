@@ -1,0 +1,9 @@
+{
+    "@metadata": {
+        "authors": ["Example Team"],
+        "last-updated": "2026-01-22",
+        "locale": "zh-hans"
+    },
+    "greeting": "你好，$1",
+    "books": "有 {{PLURAL:$1|一|}} $1 {{PLURAL:$1|本书|本书}}"
+}

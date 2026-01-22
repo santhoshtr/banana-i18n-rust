@@ -1,0 +1,9 @@
+{
+    "@metadata": {
+        "authors": ["Example Team"],
+        "last-updated": "2026-01-22",
+        "locale": "de"
+    },
+    "greeting": "Guten Tag, $1!",
+    "items": "Es {{PLURAL:$1|ist|sind}} $1 {{PLURAL:$1|Element|Elemente}} in der Kiste"
+}
