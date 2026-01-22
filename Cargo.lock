@@ -15,6 +15,7 @@ dependencies = [
 name = "banana-i18n"
 version = "0.1.0"
 dependencies = [
+ "icu_locale",
  "icu_plurals",
  "tree-sitter",
  "tree-sitter-wikitext",
