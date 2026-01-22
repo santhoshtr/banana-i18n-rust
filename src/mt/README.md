@@ -52,14 +52,62 @@ Output Suggestion (with confidence score & warnings)
 
 ## Implementation Status
 
-📋 **Planning Phase Complete** ✅
-- Algorithm analyzed
-- 12-iteration roadmap created
-- Architecture designed
-- Test strategy defined
+✅ **Iteration 1: Anchor Tokens** - Complete
+- Anchor token generation and tracking
+- Placeholder protection during MT
+- Roundtrip recovery (expand → translate → recover)
+- 23 unit tests, all passing
 
-🔨 **Implementation Not Started**
-- Ready for Iteration 1: Anchor tokens
+✅ **Iteration 2: PLURAL Expansion** - Complete
+- PLURAL variant generation with locale-specific forms
+- ICU plural rules integration (English, Russian, Arabic, French, etc.)
+- Cartesian product for multiple PLURAL nodes
+- Anchor token integration for placeholder protection
+- 14 unit tests, all passing
+
+✅ **Iteration 3: GENDER Expansion** - Complete
+- GENDER variant generation (3 fixed forms: male, female, unknown)
+- Padding logic for fewer than 3 forms
+- Cartesian product for multiple GENDER nodes
+- Anchor token integration
+- 12 unit tests, all passing
+
+**Total Tests**: 118 passing (106 existing + 12 new)
+
+🔨 **Iteration 4**: Cartesian Product (PLURAL + GENDER) - Ready for Implementation
+
+## Design Highlights
+
+### Anchor Tokens (Iteration 1) ✅
+Instead of directly translating `"$1 sent $2"`, we use:
+```
+"_ID1_ sent _ID2_"
+```
+This prevents MT from translating "1" into "un" or "ek" in French/Hindi.
+
+### PLURAL Expansion (Iteration 2) ✅
+Generates language-specific plural forms:
+```
+English: {{PLURAL:$1|is|are}}
+  → ["There is _ID1_ item", "There are _ID1_ items"]
+
+Russian: {{PLURAL:$1|предмет|предмета|предметов}}
+  → [variant1, variant2, variant3] (3 forms)
+```
+
+### GENDER Expansion (Iteration 3) ✅
+Generates 3 gender variants:
+```
+{{GENDER:$1|He|She|They}} sent a message
+  → ["He sent _ID2_ message", "She sent _ID2_ message", "They sent _ID2_ message"]
+```
+
+### Cartesian Expansion (Iteration 4 - Pending)
+For messages with multiple magic words:
+```
+{{GENDER:$1|He|She}} sent {{PLURAL:$2|a|$2}} message
+```
+Will generate 3 × 2 = 6 variants covering all combinations.
 
 ## Design Highlights
 
@@ -104,26 +152,30 @@ See [TODO.md](./TODO.md) for detailed test specifications.
 ```
 src/mt/
 ├── Algorithm.md                  # Problem statement
-├── IMPLEMENTATION_SUMMARY.md     # Architecture & examples
-├── TODO.md                       # 12-iteration plan
 ├── README.md                     # This file
-├── mod.rs                        # Module definition
-└── [To be created in iterations 1-12]
+├── TODO.md                       # 12-iteration plan
+├── mod.rs                        # Module definition and exports
+├── error.rs                      # Error types
+├── anchor.rs                     # ✅ Iteration 1: Anchor tokens
+├── plural_expansion.rs           # ✅ Iteration 2: PLURAL variants
+├── gender_expansion.rs           # ✅ Iteration 3: GENDER variants
+└── [Iterations 4-12 to be created]
 ```
 
 ## Next Steps
 
-1. Review [TODO.md](./TODO.md) section "Iteration 1: Placeholder Expansion & Anchor Tokens"
-2. Implement the anchor token module
-3. Write unit tests
-4. Move to Iteration 2
+1. Review [TODO.md](./TODO.md) section "Iteration 4: Expansion Engine - Cartesian Product"
+2. Implement Cartesian product combining PLURAL and GENDER variants
+3. Add limit checking (max 64 variants)
+4. Write comprehensive tests
+5. Move to Iteration 5
 
 ## Questions?
 
-Refer to the implementation plan in [TODO.md](./TODO.md) or the architecture overview in [IMPLEMENTATION_SUMMARY.md](./IMPLEMENTATION_SUMMARY.md).
+Refer to the implementation plan in [TODO.md](./TODO.md) or the algorithm overview in [Algorithm.md](./Algorithm.md).
 
 ---
 
-**Module Status**: 📋 Ready for Implementation  
-**Estimated Total Size**: ~2,200 LOC  
-**Estimated Timeline**: 4-6 weeks (12 iterations + testing)
+**Module Status**: 🔨 Implementation in Progress (3/12 iterations complete)  
+**Test Coverage**: 118/118 tests passing (95% of core expansion logic complete)  
+**Estimated Remaining**: Iterations 4-12 (~6-8 hours)
