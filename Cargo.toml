@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+icu_plurals = "2.1.1"
 tree-sitter = "0.26"
 tree-sitter-wikitext = "0.1.1"
