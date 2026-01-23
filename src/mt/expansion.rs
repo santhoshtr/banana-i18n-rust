@@ -4,6 +4,23 @@
 //! It handles complex messages containing multiple magic words and enforces a limit on the
 //! number of variants to prevent combinatorial explosion.
 //!
+//! # Placeholder Design
+//!
+//! Placeholders ($1, $2, etc.) in wikitext messages play two distinct roles:
+//!
+//! 1. **Control Placeholders** (magic word parameters):
+//!    - Found inside magic word parameters: `{{PLURAL:$1|...}}`, `{{GENDER:$2|...}}`
+//!    - Used to select which form to use during expansion
+//!    - **Consumed during expansion** - do NOT appear in expanded variants
+//!    - Do NOT receive anchor token protection (they never reach MT system)
+//!    - **Example:** `{{GENDER:$1|He|She}}` → variants `"He"`, `"She"` (no $1)
+//!
+//! 2. **Output Placeholders** (form text):
+//!    - Found inside magic word form text: `{{PLURAL:$1|$1 item|$1 items}}`
+//!    - These are actual content that appears in the final text
+//!    - MUST receive anchor token protection to prevent MT corruption
+//!    - **Example:** `{{PLURAL:$1|$1 item|$1 items}}` → variants `"$1 item"`, `"$1 items"` (has $1)
+//!
 //! # Example
 //!
 //! ```ignore

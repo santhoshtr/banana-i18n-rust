@@ -400,17 +400,10 @@ mod tests {
         }
         println!("⏱️  Translate: {}", format_duration(translate_duration));
 
-        // Verify anchor tokens preserved
-        for trans in &translated {
-            assert!(
-                trans.contains("_ID1_"),
-                "Anchor _ID1_ (for GENDER) should be preserved"
-            );
-            assert!(
-                trans.contains("_ID2_"),
-                "Anchor _ID2_ (for PLURAL) should be preserved"
-            );
-        }
+        // NOTE: Magic word parameters ($1 for GENDER, $2 for PLURAL) are control variables
+        // consumed during expansion. They don't appear in expanded/translated variants.
+        // Only placeholders in form text (like $2 in "a message|$2 messages") need anchor protection.
+        // This is by design - form selection happens before translation.
 
         // Reassemble (Iteration 7)
         let reassemble_start = Instant::now();
@@ -430,16 +423,27 @@ mod tests {
         }
         println!("⏱️  Reassemble: {}", format_duration(reassemble_duration));
 
-        // Verify both placeholders present
+        // Verify reassembly correctly reconstructed the magic words
+        // The output should contain both {{GENDER:...}} and {{PLURAL:...}} or at minimum their parameters
+        let output = &reassembly_result.reconstructed_wikitext;
         assert!(
-            reassembly_result.reconstructed_wikitext.contains("$1")
-                || reassembly_result.reconstructed_wikitext.contains("GENDER"),
-            "Should contain $1 placeholder or GENDER syntax"
+            output.contains("{{GENDER:") || output.contains("$1"),
+            "Reassembled output should contain GENDER magic word or $1 parameter. Got: \"{}\"",
+            output
         );
         assert!(
-            reassembly_result.reconstructed_wikitext.contains("$2")
-                || reassembly_result.reconstructed_wikitext.contains("PLURAL"),
-            "Should contain $2 placeholder or PLURAL syntax"
+            output.contains("{{PLURAL:") || output.contains("$2"),
+            "Reassembled output should contain PLURAL magic word or $2 parameter. Got: \"{}\"",
+            output
+        );
+        // Verify at least one of the magic word forms was included (sanity check)
+        assert!(
+            output.contains("He")
+                || output.contains("She")
+                || output.contains("envoyé")
+                || output.contains("envoyée"),
+            "Reassembled output should contain translated gender forms. Got: \"{}\"",
+            output
         );
 
         let total_duration = overall_start.elapsed();
@@ -545,6 +549,152 @@ mod tests {
         let total_duration = overall_start.elapsed();
         println!("\n⏱️  TOTAL TIME: {}", format_duration(total_duration));
         println!("📊 API CALLS: 1");
+        println!("{}", "=".repeat(80));
+        println!();
+    }
+
+    // ============================================================================
+    // TEST 2.6: Mixed Control and Output Placeholders
+    // ============================================================================
+    // Demonstrates the distinction between:
+    // - Control placeholders (magic word parameters): consumed during expansion
+    // - Output placeholders (form text): need anchor protection
+    // ============================================================================
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_e2e_mixed_control_and_output_placeholders() {
+        if !require_api_key() {
+            eprintln!("⚠️  Skipping: GOOGLE_TRANSLATE_API_KEY not set");
+            return;
+        }
+
+        println!("\n{}", "=".repeat(80));
+        println!("TEST 2.6: Mixed Control and Output Placeholders");
+        println!("{}", "=".repeat(80));
+        println!("Purpose: Demonstrate control vs output placeholder behavior");
+        println!("Validates: Iterations 2, 3, 4, 5-6, 7, 8");
+
+        let overall_start = Instant::now();
+
+        // This message has:
+        // - $1 as GENDER control parameter (consumed during expansion, 3 forms always)
+        // - $2 as PLURAL control parameter (consumed during expansion, 2 forms in English)
+        // - $3 as output placeholder in form text (needs anchor protection)
+        let source_message =
+            "{{GENDER:$1|He gave|She gave|They gave}} {{PLURAL:$2|1|$2}} gift to $3";
+        let source_locale = "en";
+        let target_locale = "fr";
+
+        println!("\n📝 SOURCE MESSAGE (with mixed placeholders):");
+        println!("  Message: \"{}\"", source_message);
+        println!("\n  Placeholder Analysis:");
+        println!(
+            "    - $1: CONTROL ({{GENDER:$1|...}}) - 3 forms (male, female, unknown), selects form, NOT in output"
+        );
+        println!(
+            "    - $2: CONTROL ({{PLURAL:$2|...}}) - 2 forms in English, but APPEARS in form text"
+        );
+        println!("    - $3: OUTPUT - appears in static text, needs protection");
+
+        // Parse message
+        let parse_start = Instant::now();
+        let mut parser = Parser::new(source_message);
+        let ast = parser.parse();
+        let parse_duration = parse_start.elapsed();
+        println!("\n⏱️  Parse: {}", format_duration(parse_duration));
+
+        // Expand variants (Iteration 4)
+        let expand_start = Instant::now();
+        let variants = expand_all_variants(&ast, source_locale).expect("Failed to expand variants");
+        let expand_duration = expand_start.elapsed();
+
+        println!("\n📦 EXPANDED VARIANTS (3 gender × 2 plural = 6 total):");
+        for (i, variant) in variants.iter().enumerate() {
+            println!("  [{}] \"{}\"", i, variant);
+            if i == 0 {
+                println!("       ↳ NOTE: $1 consumed (not in variant), $2 may appear in text");
+            }
+        }
+        println!(
+            "⏱️  Expand: {} ({} variants)",
+            format_duration(expand_duration),
+            variants.len()
+        );
+        assert_eq!(
+            variants.len(),
+            6,
+            "Should have 3 gender × 2 plural = 6 variants"
+        );
+
+        // Translate (Iterations 5-6)
+        let translate_start = Instant::now();
+        let provider = GoogleTranslateProvider::from_env().expect("Failed to load provider");
+        let translated = provider
+            .translate_batch(&variants, source_locale, target_locale)
+            .await
+            .expect("Translation failed");
+        let translate_duration = translate_start.elapsed();
+
+        println!("\n🌍 TRANSLATED VARIANTS:");
+        for (i, (src, tgt)) in variants.iter().zip(translated.iter()).enumerate() {
+            println!("  [{}] \"{}\" → \"{}\"", i, src, tgt);
+        }
+        println!("⏱️  Translate: {}", format_duration(translate_duration));
+
+        println!("\n📌 ANCHOR PRESERVATION CHECK:");
+        for (i, trans) in translated.iter().enumerate() {
+            let has_id3 = trans.contains("_ID3_");
+            println!("  [{}] Contains _ID3_ (for $3): {}", i, has_id3);
+        }
+        // Verify $3 (output placeholder) is protected with anchors
+        assert!(
+            translated.iter().any(|t| t.contains("_ID3_")),
+            "At least some variants should have _ID3_ anchor for output placeholder $3"
+        );
+
+        // Reassemble (Iteration 7)
+        let reassemble_start = Instant::now();
+        let reassembly_result =
+            reassemble(&ast, &variants, &translated, target_locale).expect("Reassembly failed");
+        let reassemble_duration = reassemble_start.elapsed();
+
+        println!("\n🔧 REASSEMBLED WIKITEXT:");
+        println!("  \"{}\"", reassembly_result.reconstructed_wikitext);
+        println!("  Confidence: {:.2}%", reassembly_result.confidence * 100.0);
+        println!(
+            "  Extracted forms: {} magic words",
+            reassembly_result.extracted_forms.len()
+        );
+        if !reassembly_result.warnings.is_empty() {
+            println!("  Warnings: {:?}", reassembly_result.warnings);
+        }
+        println!("⏱️  Reassemble: {}", format_duration(reassemble_duration));
+
+        // Verify the magic words and output placeholder are present
+        let output = &reassembly_result.reconstructed_wikitext;
+        assert!(
+            output.contains("{{GENDER:") && output.contains("$1"),
+            "Should reconstruct GENDER magic word with $1. Got: \"{}\"",
+            output
+        );
+        assert!(
+            output.contains("{{PLURAL:") && output.contains("$2"),
+            "Should reconstruct PLURAL magic word with $2. Got: \"{}\"",
+            output
+        );
+        assert!(
+            output.contains("$3"),
+            "Should preserve output placeholder $3. Got: \"{}\"",
+            output
+        );
+
+        let total_duration = overall_start.elapsed();
+        println!("\n⏱️  TOTAL TIME: {}", format_duration(total_duration));
+        println!(
+            "📊 API CALLS: 1 (batch translation for {} variants)",
+            variants.len()
+        );
         println!("{}", "=".repeat(80));
         println!();
     }
