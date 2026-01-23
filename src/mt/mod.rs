@@ -18,18 +18,34 @@
 /// # Example
 ///
 /// ```ignore
-/// use banana_i18n::mt::anchor::{generate_anchor_tokens, replace_placeholders_with_anchors};
+/// use banana_i18n::mt::{MachineTranslator, GoogleTranslateProvider, expand_all_variants};
+/// use banana_i18n::parser::Parser;
 ///
-/// let text = "Hello, $1! You have $2 messages.";
-/// let anchors = generate_anchor_tokens(2);
-/// let expanded = replace_placeholders_with_anchors(text, &anchors)?;
-/// // Result: "Hello, _ID1_ ! You have _ID2_  messages."
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     // Parse message
+///     let mut parser = Parser::new("{{GENDER:$1|He|She}} sent {{PLURAL:$2|a message|$2 messages}}");
+///     let ast = parser.parse();
+///
+///     // Expand variants
+///     let variants = expand_all_variants(&ast, "en")?;
+///
+///     // Translate with provider
+///     let provider = GoogleTranslateProvider::from_env()?;
+///     let translated = provider.translate_batch(&variants, "en", "fr").await?;
+///
+///     println!("{:?}", translated);
+///     Ok(())
+/// }
 /// ```
 pub mod anchor;
 pub mod error;
 pub mod expansion;
 pub mod gender_expansion;
+pub mod google_translate;
+pub mod mock;
 pub mod plural_expansion;
+pub mod translator;
 
 pub use anchor::{
     AnchorToken, generate_anchor_tokens, recover_placeholders_from_anchors,
@@ -38,4 +54,7 @@ pub use anchor::{
 pub use error::{MtError, MtResult};
 pub use expansion::{calculate_variant_count, expand_all_variants};
 pub use gender_expansion::{GenderForm, expand_gender_variants, get_gender_forms};
+pub use google_translate::GoogleTranslateProvider;
+pub use mock::{MockMode, MockTranslator};
 pub use plural_expansion::{expand_plural_variants, get_plural_forms_for_language};
+pub use translator::MachineTranslator;

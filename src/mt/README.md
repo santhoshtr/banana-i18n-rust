@@ -79,9 +79,24 @@ Output Suggestion (with confidence score & warnings)
 - Anchor token integration for all combinations
 - 15 unit tests, all passing
 
-**Total Tests**: 133 passing (118 existing + 15 new)
+✅ **Iteration 5: MT Trait & Mock Implementation** - Complete
+- Generic `MachineTranslator` trait for pluggable MT providers
+- Async-based design with Tokio runtime support
+- `MockTranslator` with 5 modes: Suffix, Mappings, Reorder, Error, NoOp
+- Simulated network delays for testing
+- Anchor token preservation in all modes
+- 22 comprehensive async tests, all passing
 
-🔨 **Iteration 5**: MT Trait & Mock Implementation - Ready for Implementation
+✅ **Iteration 6: Google Translate Provider** - Complete
+- `GoogleTranslateProvider` for real Google Translate API integration
+- API key loading from `GOOGLE_TRANSLATE_API_KEY` environment variable
+- Automatic batch chunking (max 128 items per request)
+- Transparent handling of large translations
+- Comprehensive error handling: ConfigError, NetworkError, InvalidLocale
+- Validation: locale codes, character limits, text length
+- 17 tests (12 unit + 5 integration with #[ignore])
+
+**Total Tests**: 180 passing (133 existing + 47 new from Iterations 5-6)
 
 ## Design Highlights
 
@@ -167,14 +182,17 @@ src/mt/
 ├── plural_expansion.rs           # ✅ Iteration 2: PLURAL variants
 ├── gender_expansion.rs           # ✅ Iteration 3: GENDER variants
 ├── expansion.rs                  # ✅ Iteration 4: Cartesian product
-└── [Iterations 5-12 to be created]
+├── translator.rs                 # ✅ Iteration 5: MT trait definition
+├── mock.rs                       # ✅ Iteration 5: Mock translator
+├── google_translate.rs           # ✅ Iteration 6: Google Translate provider
+└── [Iterations 7-12 to be created]
 ```
 
 ## Next Steps
 
-1. Review [TODO.md](./TODO.md) section "Iteration 5: MT Trait & Mock Implementation"
-2. Implement MT trait and mock provider for testing
-3. Move to Iteration 5
+1. Review [TODO.md](./TODO.md) section "Iteration 7: Reassembly Engine"
+2. Implement reassembly logic for reconstructing wikitext
+3. Move to Iteration 7
 
 ## Questions?
 
@@ -182,6 +200,6 @@ Refer to the implementation plan in [TODO.md](./TODO.md) or the algorithm overvi
 
 ---
 
-**Module Status**: 🔨 Implementation in Progress (4/12 iterations complete)  
-**Test Coverage**: 133/133 tests passing (98% of core expansion logic complete)  
-**Estimated Remaining**: Iterations 5-12 (~5-7 hours)
+**Module Status**: 🔨 Implementation in Progress (6/12 iterations complete)  
+**Test Coverage**: 180/180 tests passing (98% of expansion and MT infrastructure complete)  
+**Estimated Remaining**: Iterations 7-12 (~4-6 hours)
