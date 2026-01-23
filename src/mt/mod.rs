@@ -45,6 +45,8 @@ pub mod gender_expansion;
 pub mod google_translate;
 pub mod mock;
 pub mod plural_expansion;
+pub mod reassembly;
+pub mod scope_widening;
 pub mod translator;
 
 pub use anchor::{
@@ -57,4 +59,5 @@ pub use gender_expansion::{GenderForm, expand_gender_variants, get_gender_forms}
 pub use google_translate::GoogleTranslateProvider;
 pub use mock::{MockMode, MockTranslator};
 pub use plural_expansion::{expand_plural_variants, get_plural_forms_for_language};
+pub use reassembly::{ExtractedForms, ReassemblyResult, ScopeChange, reassemble};
 pub use translator::MachineTranslator;

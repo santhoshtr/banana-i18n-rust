@@ -11,6 +11,10 @@ pub enum MtError {
     TranslationError(String),
     /// Error during reassembly phase
     ReassemblyError(String),
+    /// Inconsistent machine translations (same source translated differently)
+    InconsistentVariants(String),
+    /// Error during scope detection
+    ScopeDetectionError(String),
     /// Invalid API configuration (missing keys, invalid credentials)
     ConfigError(String),
     /// Network or HTTP error (timeouts, connection failures)
@@ -29,6 +33,8 @@ impl std::fmt::Display for MtError {
             MtError::PluralExpansionError(msg) => write!(f, "Plural expansion error: {}", msg),
             MtError::TranslationError(msg) => write!(f, "Translation error: {}", msg),
             MtError::ReassemblyError(msg) => write!(f, "Reassembly error: {}", msg),
+            MtError::InconsistentVariants(msg) => write!(f, "Inconsistent variants: {}", msg),
+            MtError::ScopeDetectionError(msg) => write!(f, "Scope detection error: {}", msg),
             MtError::ConfigError(msg) => write!(f, "Configuration error: {}", msg),
             MtError::NetworkError(msg) => write!(f, "Network error: {}", msg),
             MtError::InvalidLocale(msg) => write!(f, "Invalid locale: {}", msg),

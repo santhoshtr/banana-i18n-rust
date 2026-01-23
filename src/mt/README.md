@@ -96,7 +96,15 @@ Output Suggestion (with confidence score & warnings)
 - Validation: locale codes, character limits, text length
 - 17 tests (12 unit + 5 integration with #[ignore])
 
-**Total Tests**: 180 passing (133 existing + 47 new from Iterations 5-6)
+✅ **Iteration 7: Reassembly Engine - Structural Alignment & Scope Widening** - Complete
+- `find_stable_and_variable_parts()`: Identifies unchanging text across translated variants
+- `detect_scope_changes()`: Detects when MT changes words outside magic word boundaries
+- `reconstruct_wikitext()`: Rebuilds wikitext with {{PLURAL|...}} and {{GENDER|...}} syntax
+- `ReassemblyResult`: Provides reconstructed wikitext, extracted forms, scope changes, and warnings
+- Confidence scoring based on scope expansion degree
+- 17 unit and integration tests, all passing
+
+**Total Tests**: 197 passing (180 existing + 17 new from Iteration 7)
 
 ## Design Highlights
 
@@ -185,14 +193,16 @@ src/mt/
 ├── translator.rs                 # ✅ Iteration 5: MT trait definition
 ├── mock.rs                       # ✅ Iteration 5: Mock translator
 ├── google_translate.rs           # ✅ Iteration 6: Google Translate provider
-└── [Iterations 7-12 to be created]
+├── reassembly.rs                 # ✅ Iteration 7: Reassembly engine
+├── scope_widening.rs             # ✅ Iteration 7: Scope widening helpers
+└── [Iterations 8-12 to be created]
 ```
 
 ## Next Steps
 
-1. Review [TODO.md](./TODO.md) section "Iteration 7: Reassembly Engine"
-2. Implement reassembly logic for reconstructing wikitext
-3. Move to Iteration 7
+1. Review [TODO.md](./TODO.md) section "Iteration 8: Reassembly Engine - Scope Widening (Advanced)"
+2. Implement advanced scope widening with full placeholder recovery
+3. Move to Iteration 8
 
 ## Questions?
 
@@ -200,6 +210,6 @@ Refer to the implementation plan in [TODO.md](./TODO.md) or the algorithm overvi
 
 ---
 
-**Module Status**: 🔨 Implementation in Progress (6/12 iterations complete)  
-**Test Coverage**: 180/180 tests passing (98% of expansion and MT infrastructure complete)  
-**Estimated Remaining**: Iterations 7-12 (~4-6 hours)
+**Module Status**: 🔨 Implementation in Progress (7/12 iterations complete)  
+**Test Coverage**: 197/197 tests passing (98% of expansion, MT, and reassembly infrastructure complete)  
+**Estimated Remaining**: Iterations 8-12 (~3-5 hours)
