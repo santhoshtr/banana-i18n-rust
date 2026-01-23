@@ -50,6 +50,9 @@ pub mod reassembly;
 pub mod scope_widening;
 pub mod translator;
 
+#[cfg(test)]
+mod integration_tests;
+
 pub use anchor::{
     AnchorToken, generate_anchor_tokens, recover_placeholders_from_anchors,
     replace_placeholders_with_anchors,
