@@ -44,6 +44,7 @@ pub mod expansion;
 pub mod gender_expansion;
 pub mod google_translate;
 pub mod mock;
+pub mod placeholder_recovery;
 pub mod plural_expansion;
 pub mod reassembly;
 pub mod scope_widening;
@@ -58,6 +59,10 @@ pub use expansion::{calculate_variant_count, expand_all_variants};
 pub use gender_expansion::{GenderForm, expand_gender_variants, get_gender_forms};
 pub use google_translate::GoogleTranslateProvider;
 pub use mock::{MockMode, MockTranslator};
+pub use placeholder_recovery::{
+    LocatedAnchor, RecoveryReport, RecoveryResult, detect_anchor_reordering,
+    locate_anchors_in_text, recover_placeholders, validate_recovery,
+};
 pub use plural_expansion::{expand_plural_variants, get_plural_forms_for_language};
 pub use reassembly::{ExtractedForms, ReassemblyResult, ScopeChange, reassemble};
 pub use translator::MachineTranslator;

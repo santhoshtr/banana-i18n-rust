@@ -7,7 +7,7 @@
 //! 4. Reconstructing complete wikitext with appropriate magic word syntax
 
 use super::error::{MtError, MtResult};
-use crate::ast::{AstNode, AstNodeList, Transclusion};
+use crate::ast::{AstNode, AstNodeList};
 use std::collections::HashMap;
 
 /// Result of reassembly operation
@@ -75,6 +75,7 @@ struct Alignment {
     /// Parts that don't change across all variants
     stable_parts: Vec<StablePart>,
     /// Parts that change (corresponding to magic words)
+    #[allow(dead_code)]
     variable_parts: Vec<VariablePart>,
 }
 
