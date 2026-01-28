@@ -1,71 +1,91 @@
-/// Machine Translation Module
-///
-/// This module provides machine translation suggestion capabilities for the banana-i18n library.
-/// It implements the Cartesian Expansion and Diff-and-Capture algorithm to generate high-quality
-/// translation suggestions while preserving complex wikitext features like PLURAL, GENDER, and
-/// parameterized placeholders.
-///
-/// # Overview
-///
-/// The MT module consists of several components working together:
-///
-/// 1. **Expansion Engine** - Converts wikitext with magic words into all possible plain-text variants
-/// 2. **MT Trait & Providers** - Generic trait for MT systems with Google Translate implementation
-/// 3. **Reassembly Engine** - Reconstructs wikitext from translated variants using Diff-and-Capture
-/// 4. **Consistency Checker** - Validates translations for hallucinations and anomalies
-/// 5. **Suggestion Generator** - Orchestrates the full pipeline
-///
-/// # Example
-///
-/// ```ignore
-/// use banana_i18n::mt::{MachineTranslator, GoogleTranslateProvider, expand_all_variants};
-/// use banana_i18n::parser::Parser;
-///
-/// #[tokio::main]
-/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     // Parse message
-///     let mut parser = Parser::new("{{GENDER:$1|He|She}} sent {{PLURAL:$2|a message|$2 messages}}");
-///     let ast = parser.parse();
-///
-///     // Expand variants
-///     let variants = expand_all_variants(&ast, "en")?;
-///
-///     // Translate with provider
-///     let provider = GoogleTranslateProvider::from_env()?;
-///     let translated = provider.translate_batch(&variants, "en", "fr").await?;
-///
-///     println!("{:?}", translated);
-///     Ok(())
-/// }
-/// ```
-pub mod anchor;
+//! Machine Translation Module
+//!
+//! This module provides machine translation capabilities for the banana-i18n library
+//! following the design patterns from the Python reference implementation. It implements
+//! a simplified and effective approach to MT-assisted localization while preserving
+//! complex wikitext features like PLURAL, GENDER, and parameterized placeholders.
+//!
+//! # Architecture Overview
+//!
+//! The MT module consists of several focused components:
+//!
+//! 1. **Data Structures** (`data`) - Core types: `TranslationVariant`, `MessageContext`
+//! 2. **Expansion Engine** (`expansion`) - Converts wikitext into variants with cartesian product
+//! 3. **Translation Providers** (`translator`, `google_translate`, `mock`) - MT system integrations
+//! 4. **Reassembly Engine** (`reassembly`) - Reconstructs wikitext using axis-collapsing algorithm
+//! 5. **Error Handling** (`error`) - Comprehensive error types for the MT pipeline
+//!
+//! # Design Philosophy
+//!
+//! This implementation prioritizes simplicity and correctness over complexity:
+//! - **Data-driven**: Simple structs instead of complex enums
+//! - **Algorithm focus**: Implements proven algorithms from Python reference
+//! - **Type safety**: Leverages Rust's type system without over-engineering
+//! - **Testability**: Clear separation of concerns enables thorough testing
+//!
+//! # Workflow Example
+//!
+//! ```ignore
+//! use banana_i18n::mt::{
+//!     MachineTranslator, GoogleTranslateProvider,
+//!     prepare_for_translation, Reassembler
+//! };
+//! use banana_i18n::parser::Parser;
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // 1. Parse message
+//!     let mut parser = Parser::new("{{GENDER:$1|He|She}} sent {{PLURAL:$2|a message|$2 messages}}");
+//!     let ast = parser.parse();
+//!
+//!     // 2. Prepare for translation (expand to all variants)
+//!     let mut context = prepare_for_translation(&ast, "en", "user-message")?;
+//!
+//!     // 3. Translate using block translation for consistency
+//!     let provider = GoogleTranslateProvider::from_env()?;
+//!     let source_texts = context.source_texts();
+//!     let translated_texts = provider.translate_as_block(&source_texts, "en", "fr").await?;
+//!     context.update_translations(translated_texts);
+//!
+//!     // 4. Reassemble back to wikitext
+//!     let reassembler = Reassembler::new(context.variable_types.clone());
+//!     let final_wikitext = reassembler.reassemble(context.variants)?;
+//!
+//!     println!("Result: {}", final_wikitext);
+//!     // Output: "{{GENDER:$1|Il|Elle}} a envoyé {{PLURAL:$2|un message|$2 messages}}"
+//!     Ok(())
+//! }
+//! ```
+//!
+//! # Key Features
+//!
+//! - **Consistency Checking**: Detects MT hallucinations using similarity thresholds
+//! - **Word Boundary Snapping**: Ensures clean wikitext reconstruction
+//! - **Anchor Token Protection**: Prevents MT corruption of placeholders ($1 → _ID1_)
+//! - **Block Translation**: Translates related variants together for consistency
+//! - **ICU Plural Support**: Handles complex plural rules for 50+ languages
+
+// Core module declarations
+pub mod data;
 pub mod error;
 pub mod expansion;
-pub mod gender_expansion;
 pub mod google_translate;
 pub mod mock;
-pub mod placeholder_recovery;
-pub mod plural_expansion;
 pub mod reassembly;
-pub mod scope_widening;
 pub mod translator;
 
+// Integration tests (only available during testing)
 #[cfg(test)]
 mod integration_tests;
 
-pub use anchor::{
-    AnchorToken, generate_anchor_tokens, recover_placeholders_from_anchors,
-    replace_placeholders_with_anchors,
-};
+// Public API exports - simplified and focused
+pub use data::{MessageContext, TranslationVariant};
 pub use error::{MtError, MtResult};
-pub use expansion::{calculate_variant_count, expand_all_variants};
-pub use gender_expansion::{GenderForm, expand_gender_variants, get_gender_forms};
+pub use expansion::{
+    GenderForm, PluralForm, expand_to_variants, get_gender_forms, get_plural_forms_for_language,
+    prepare_for_translation,
+};
 pub use google_translate::GoogleTranslateProvider;
 pub use mock::{MockMode, MockTranslator};
-pub use placeholder_recovery::{
-    LocatedAnchor, RecoveryReport, RecoveryResult, detect_anchor_reordering,
-    locate_anchors_in_text, recover_placeholders, validate_recovery,
-};
-pub use plural_expansion::{expand_plural_variants, get_plural_forms_for_language};
-pub use reassembly::{ExtractedForms, ReassemblyResult, ScopeChange, reassemble};
+pub use reassembly::{Reassembler, get_similarity, reassemble_from_context};
 pub use translator::MachineTranslator;

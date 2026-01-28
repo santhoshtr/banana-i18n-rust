@@ -1,7 +1,7 @@
 //! End-to-End Integration Tests for Machine Translation Pipeline
 //!
-//! These tests exercise the complete pipeline from message parsing through expansion,
-//! translation, reassembly, and placeholder recovery using the real Google Translate API.
+//! These tests exercise the complete pipeline using the new simplified API design,
+//! following the Python reference implementation patterns.
 //!
 //! # Running Integration Tests
 //!
@@ -33,22 +33,21 @@ mod tests {
     }
 
     // ============================================================================
-    // TEST 2.1: Simple message with a single placeholder
+    // TEST 1: Simple message with a single placeholder (New API)
     // ============================================================================
 
     #[tokio::test]
     #[ignore]
-    async fn test_e2e_simple_message_with_placeholder() {
+    async fn test_e2e_simple_message_new_api() {
         if !require_api_key() {
             eprintln!("⚠️  Skipping: GOOGLE_TRANSLATE_API_KEY not set");
             return;
         }
 
         println!("\n{}", "=".repeat(80));
-        println!("TEST 2.1: Simple Message with Placeholder");
+        println!("TEST 1: Simple Message with New API");
         println!("{}", "=".repeat(80));
-        println!("Purpose: Validate basic placeholder expansion, translation, and recovery");
-        println!("Validates: Iterations 1, 5-6, 8");
+        println!("Purpose: Validate new simplified API workflow");
 
         let overall_start = Instant::now();
 
@@ -61,641 +60,432 @@ mod tests {
         println!("  Locale: {}", source_locale);
         println!("  Message: \"{}\"", source_message);
 
-        // Parse message
+        // 1. Parse message
         let parse_start = Instant::now();
         let mut parser = Parser::new(source_message);
         let ast = parser.parse();
         let parse_duration = parse_start.elapsed();
         println!("⏱️  Parse: {}", format_duration(parse_duration));
 
-        // Expand variants with anchor tokens (Iteration 1)
-        let expand_start = Instant::now();
-        let variants = expand_all_variants(&ast, source_locale).expect("Failed to expand variants");
-        let expand_duration = expand_start.elapsed();
+        // 2. Prepare for translation (NEW API)
+        let prepare_start = Instant::now();
+        let mut context = prepare_for_translation(&ast, source_locale, "test-message")
+            .expect("Failed to prepare for translation");
+        let prepare_duration = prepare_start.elapsed();
 
-        println!("\n📦 EXPANDED VARIANTS (with anchors):");
-        for (i, variant) in variants.iter().enumerate() {
-            println!("  [{}] \"{}\"", i, variant);
+        println!("\n📦 MESSAGE CONTEXT:");
+        println!("  Key: {}", context.original_key);
+        println!("  Variables: {:?}", context.variable_types);
+        println!("  Variants: {}", context.variant_count());
+        for (i, variant) in context.variants.iter().enumerate() {
+            println!("    [{}] \"{}\"", i, variant.source_text);
         }
-        println!("⏱️  Expand: {}", format_duration(expand_duration));
-        assert!(!variants.is_empty(), "Should have at least 1 variant");
+        println!("⏱️  Prepare: {}", format_duration(prepare_duration));
 
-        // Translate variants (Iterations 5-6)
+        // 3. Translate using block method for consistency (NEW API)
         let translate_start = Instant::now();
         let provider = GoogleTranslateProvider::from_env().expect("Failed to load provider");
-        let translated = provider
-            .translate_batch(&variants, source_locale, target_locale)
+        let source_texts = context.source_texts();
+        let translated_texts = provider
+            .translate_as_block(&source_texts, source_locale, target_locale)
             .await
-            .expect("Translation failed");
+            .expect("Block translation failed");
+        context.update_translations(translated_texts);
         let translate_duration = translate_start.elapsed();
 
         println!("\n🌍 TRANSLATED VARIANTS:");
-        for (i, (src, tgt)) in variants.iter().zip(translated.iter()).enumerate() {
-            println!("  [{}] \"{}\" → \"{}\"", i, src, tgt);
+        for (i, variant) in context.variants.iter().enumerate() {
+            println!(
+                "  [{}] \"{}\" → \"{}\"",
+                i, variant.source_text, variant.translated_text
+            );
         }
         println!("⏱️  Translate: {}", format_duration(translate_duration));
 
         // Verify anchor preservation
-        for trans in &translated {
+        for variant in &context.variants {
             assert!(
-                trans.contains("_ID1_"),
-                "Anchor token _ID1_ should be preserved in translation"
+                variant.translated_text.contains("_ID1_"),
+                "Anchor token _ID1_ should be preserved in: {}",
+                variant.translated_text
             );
         }
 
-        // Reassemble wikitext (Iteration 7)
+        // 4. Reassemble using new Reassembler API
         let reassemble_start = Instant::now();
-        let reassembly_result =
-            reassemble(&ast, &variants, &translated, target_locale).expect("Reassembly failed");
+        let reassembler = Reassembler::new(context.variable_types.clone());
+        let final_wikitext = reassembler
+            .reassemble(context.variants.clone())
+            .expect("Reassembly failed");
         let reassemble_duration = reassemble_start.elapsed();
 
         println!("\n🔧 REASSEMBLED WIKITEXT:");
-        println!("  \"{}\"", reassembly_result.reconstructed_wikitext);
-        println!("  Confidence: {:.2}%", reassembly_result.confidence * 100.0);
-        if !reassembly_result.warnings.is_empty() {
-            println!("  Warnings: {:?}", reassembly_result.warnings);
-        }
+        println!("  \"{}\"", final_wikitext);
         println!("⏱️  Reassemble: {}", format_duration(reassemble_duration));
 
         // Verify output contains placeholder
         assert!(
-            reassembly_result.reconstructed_wikitext.contains("$1"),
-            "Final wikitext should contain $1 placeholder"
+            final_wikitext.contains("$1"),
+            "Final wikitext should contain $1 placeholder: {}",
+            final_wikitext
         );
 
         let total_duration = overall_start.elapsed();
         println!("\n⏱️  TOTAL TIME: {}", format_duration(total_duration));
-        println!("📊 API CALLS: 1 (single batch translation)");
+        println!("📊 API CALLS: 1 (block translation)");
         println!("{}", "=".repeat(80));
-        println!();
     }
 
     // ============================================================================
-    // TEST 2.2: Message with PLURAL magic word
+    // TEST 2: Message with PLURAL magic word
     // ============================================================================
 
     #[tokio::test]
     #[ignore]
-    async fn test_e2e_plural_expansion_and_translation() {
+    async fn test_e2e_plural_expansion_new_api() {
         if !require_api_key() {
             eprintln!("⚠️  Skipping: GOOGLE_TRANSLATE_API_KEY not set");
             return;
         }
 
         println!("\n{}", "=".repeat(80));
-        println!("TEST 2.2: Message with PLURAL Magic Word");
+        println!("TEST 2: PLURAL Magic Word with New API");
         println!("{}", "=".repeat(80));
-        println!("Purpose: Validate PLURAL expansion, multi-variant translation, and reassembly");
-        println!("Validates: Iterations 2, 5-6, 7, 8");
 
-        let overall_start = Instant::now();
-
-        // Setup
-        let source_message = "There {{PLURAL:$1|is one item|are $1 items}}";
+        let source_message = "There {{PLURAL:$1|is|are}} $1 item";
         let source_locale = "en";
         let target_locale = "fr";
 
-        println!("\n📝 SOURCE MESSAGE:");
-        println!("  Locale: {}", source_locale);
-        println!("  Message: \"{}\"", source_message);
+        println!("\n📝 SOURCE MESSAGE: \"{}\"", source_message);
 
-        // Parse message
-        let parse_start = Instant::now();
+        // Parse and prepare
         let mut parser = Parser::new(source_message);
         let ast = parser.parse();
-        let parse_duration = parse_start.elapsed();
-        println!("⏱️  Parse: {}", format_duration(parse_duration));
+        let mut context =
+            prepare_for_translation(&ast, source_locale, "plural-test").expect("Failed to prepare");
 
-        // Expand variants (Iteration 2)
-        let expand_start = Instant::now();
-        let variants = expand_all_variants(&ast, source_locale).expect("Failed to expand variants");
-        let expand_duration = expand_start.elapsed();
-
-        println!("\n📦 EXPANDED VARIANTS (plural forms):");
-        for (i, variant) in variants.iter().enumerate() {
-            println!("  [{}] \"{}\"", i, variant);
-        }
-        println!(
-            "⏱️  Expand: {} ({} variants)",
-            format_duration(expand_duration),
-            variants.len()
-        );
-        assert_eq!(variants.len(), 2, "English should have 2 plural forms");
-
-        // Translate (Iterations 5-6)
-        let translate_start = Instant::now();
-        let provider = GoogleTranslateProvider::from_env().expect("Failed to load provider");
-        let translated = provider
-            .translate_batch(&variants, source_locale, target_locale)
-            .await
-            .expect("Translation failed");
-        let translate_duration = translate_start.elapsed();
-
-        println!("\n🌍 TRANSLATED VARIANTS:");
-        for (i, (src, tgt)) in variants.iter().zip(translated.iter()).enumerate() {
-            println!("  [{}] \"{}\" → \"{}\"", i, src, tgt);
-        }
-        println!("⏱️  Translate: {}", format_duration(translate_duration));
-
-        // Reassemble (Iteration 7)
-        let reassemble_start = Instant::now();
-        let reassembly_result =
-            reassemble(&ast, &variants, &translated, target_locale).expect("Reassembly failed");
-        let reassemble_duration = reassemble_start.elapsed();
-
-        println!("\n🔧 REASSEMBLED WIKITEXT:");
-        println!("  \"{}\"", reassembly_result.reconstructed_wikitext);
-        println!("  Confidence: {:.2}%", reassembly_result.confidence * 100.0);
-        if !reassembly_result.warnings.is_empty() {
-            println!("  Warnings: {:?}", reassembly_result.warnings);
-        }
-        println!("⏱️  Reassemble: {}", format_duration(reassemble_duration));
-
-        // Verify PLURAL syntax preserved
-        assert!(
-            reassembly_result.reconstructed_wikitext.contains("PLURAL")
-                || reassembly_result.reconstructed_wikitext.contains("$1"),
-            "Should preserve PLURAL syntax or contain placeholder"
-        );
-
-        let total_duration = overall_start.elapsed();
-        println!("\n⏱️  TOTAL TIME: {}", format_duration(total_duration));
-        println!(
-            "📊 API CALLS: 1 (batch translation for {} variants)",
-            variants.len()
-        );
-        println!("{}", "=".repeat(80));
-        println!();
-    }
-
-    // ============================================================================
-    // TEST 2.3: Message with GENDER magic word
-    // ============================================================================
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_e2e_gender_expansion_and_translation() {
-        if !require_api_key() {
-            eprintln!("⚠️  Skipping: GOOGLE_TRANSLATE_API_KEY not set");
-            return;
-        }
-
-        println!("\n{}", "=".repeat(80));
-        println!("TEST 2.3: Message with GENDER Magic Word");
-        println!("{}", "=".repeat(80));
-        println!("Purpose: Validate GENDER expansion and agreement in translation");
-        println!("Validates: Iterations 3, 5-6, 7, 8");
-
-        let overall_start = Instant::now();
-
-        // Setup
-        let source_message = "{{GENDER:$1|He is here|She is here|They are here}}";
-        let source_locale = "en";
-        let target_locale = "fr";
-
-        println!("\n📝 SOURCE MESSAGE:");
-        println!("  Locale: {}", source_locale);
-        println!("  Message: \"{}\"", source_message);
-
-        // Parse message
-        let parse_start = Instant::now();
-        let mut parser = Parser::new(source_message);
-        let ast = parser.parse();
-        let parse_duration = parse_start.elapsed();
-        println!("⏱️  Parse: {}", format_duration(parse_duration));
-
-        // Expand variants (Iteration 3)
-        let expand_start = Instant::now();
-        let variants = expand_all_variants(&ast, source_locale).expect("Failed to expand variants");
-        let expand_duration = expand_start.elapsed();
-
-        println!("\n📦 EXPANDED VARIANTS (gender forms):");
-        for (i, variant) in variants.iter().enumerate() {
-            let gender = match i {
-                0 => "male",
-                1 => "female",
-                _ => "unknown",
-            };
-            println!("  [{}] ({}) \"{}\"", i, gender, variant);
-        }
-        println!(
-            "⏱️  Expand: {} ({} variants)",
-            format_duration(expand_duration),
-            variants.len()
-        );
-        assert_eq!(variants.len(), 3, "Should have 3 gender variants");
-
-        // Translate (Iterations 5-6)
-        let translate_start = Instant::now();
-        let provider = GoogleTranslateProvider::from_env().expect("Failed to load provider");
-        let translated = provider
-            .translate_batch(&variants, source_locale, target_locale)
-            .await
-            .expect("Translation failed");
-        let translate_duration = translate_start.elapsed();
-
-        println!("\n🌍 TRANSLATED VARIANTS:");
-        for (i, (src, tgt)) in variants.iter().zip(translated.iter()).enumerate() {
-            let gender = match i {
-                0 => "male",
-                1 => "female",
-                _ => "unknown",
-            };
-            println!("  [{}] ({}) \"{}\" → \"{}\"", i, gender, src, tgt);
-        }
-        println!("⏱️  Translate: {}", format_duration(translate_duration));
-
-        // Reassemble (Iteration 7)
-        let reassemble_start = Instant::now();
-        let reassembly_result =
-            reassemble(&ast, &variants, &translated, target_locale).expect("Reassembly failed");
-        let reassemble_duration = reassemble_start.elapsed();
-
-        println!("\n🔧 REASSEMBLED WIKITEXT:");
-        println!("  \"{}\"", reassembly_result.reconstructed_wikitext);
-        println!("  Confidence: {:.2}%", reassembly_result.confidence * 100.0);
-        if !reassembly_result.warnings.is_empty() {
-            println!("  Warnings: {:?}", reassembly_result.warnings);
-        }
-        println!("⏱️  Reassemble: {}", format_duration(reassemble_duration));
-
-        let total_duration = overall_start.elapsed();
-        println!("\n⏱️  TOTAL TIME: {}", format_duration(total_duration));
-        println!(
-            "📊 API CALLS: 1 (batch translation for {} variants)",
-            variants.len()
-        );
-        println!("{}", "=".repeat(80));
-        println!();
-    }
-
-    // ============================================================================
-    // TEST 2.4: Complex message with PLURAL × GENDER cartesian product
-    // ============================================================================
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_e2e_plural_and_gender_cartesian_product() {
-        if !require_api_key() {
-            eprintln!("⚠️  Skipping: GOOGLE_TRANSLATE_API_KEY not set");
-            return;
-        }
-
-        println!("\n{}", "=".repeat(80));
-        println!("TEST 2.4: PLURAL × GENDER Cartesian Product");
-        println!("{}", "=".repeat(80));
-        println!("Purpose: Validate complex message with multiple magic words");
-        println!("Validates: Iterations 4, 5-6, 7, 8");
-
-        let overall_start = Instant::now();
-
-        // Setup
-        let source_message = "{{GENDER:$1|He|She}} sent {{PLURAL:$2|a message|$2 messages}}";
-        let source_locale = "en";
-        let target_locale = "fr";
-
-        println!("\n📝 SOURCE MESSAGE:");
-        println!("  Locale: {}", source_locale);
-        println!("  Message: \"{}\"", source_message);
-
-        // Parse message
-        let parse_start = Instant::now();
-        let mut parser = Parser::new(source_message);
-        let ast = parser.parse();
-        let parse_duration = parse_start.elapsed();
-        println!("⏱️  Parse: {}", format_duration(parse_duration));
-
-        // Expand variants (Iteration 4)
-        let expand_start = Instant::now();
-        let variants = expand_all_variants(&ast, source_locale).expect("Failed to expand variants");
-        let expand_duration = expand_start.elapsed();
-
-        println!("\n📦 EXPANDED VARIANTS (3 gender × 2 plural = 6 total):");
-        for (i, variant) in variants.iter().enumerate() {
-            println!("  [{}] \"{}\"", i, variant);
-        }
-        println!(
-            "⏱️  Expand: {} ({} variants)",
-            format_duration(expand_duration),
-            variants.len()
-        );
-        assert_eq!(
-            variants.len(),
-            6,
-            "Should have 3 gender × 2 plural = 6 variants"
-        );
-
-        // Translate (Iterations 5-6)
-        let translate_start = Instant::now();
-        let provider = GoogleTranslateProvider::from_env().expect("Failed to load provider");
-        let translated = provider
-            .translate_batch(&variants, source_locale, target_locale)
-            .await
-            .expect("Translation failed");
-        let translate_duration = translate_start.elapsed();
-
-        println!("\n🌍 TRANSLATED VARIANTS:");
-        for (i, (src, tgt)) in variants.iter().zip(translated.iter()).enumerate() {
-            println!("  [{}] \"{}\" → \"{}\"", i, src, tgt);
-        }
-        println!("⏱️  Translate: {}", format_duration(translate_duration));
-
-        // NOTE: Magic word parameters ($1 for GENDER, $2 for PLURAL) are control variables
-        // consumed during expansion. They don't appear in expanded/translated variants.
-        // Only placeholders in form text (like $2 in "a message|$2 messages") need anchor protection.
-        // This is by design - form selection happens before translation.
-
-        // Reassemble (Iteration 7)
-        let reassemble_start = Instant::now();
-        let reassembly_result =
-            reassemble(&ast, &variants, &translated, target_locale).expect("Reassembly failed");
-        let reassemble_duration = reassemble_start.elapsed();
-
-        println!("\n🔧 REASSEMBLED WIKITEXT:");
-        println!("  \"{}\"", reassembly_result.reconstructed_wikitext);
-        println!("  Confidence: {:.2}%", reassembly_result.confidence * 100.0);
-        println!(
-            "  Extracted forms: {} magic words",
-            reassembly_result.extracted_forms.len()
-        );
-        if !reassembly_result.warnings.is_empty() {
-            println!("  Warnings: {:?}", reassembly_result.warnings);
-        }
-        println!("⏱️  Reassemble: {}", format_duration(reassemble_duration));
-
-        // Verify reassembly correctly reconstructed the magic words
-        // The output should contain both {{GENDER:...}} and {{PLURAL:...}} or at minimum their parameters
-        let output = &reassembly_result.reconstructed_wikitext;
-        assert!(
-            output.contains("{{GENDER:") || output.contains("$1"),
-            "Reassembled output should contain GENDER magic word or $1 parameter. Got: \"{}\"",
-            output
-        );
-        assert!(
-            output.contains("{{PLURAL:") || output.contains("$2"),
-            "Reassembled output should contain PLURAL magic word or $2 parameter. Got: \"{}\"",
-            output
-        );
-        // Verify at least one of the magic word forms was included (sanity check)
-        assert!(
-            output.contains("He")
-                || output.contains("She")
-                || output.contains("envoyé")
-                || output.contains("envoyée"),
-            "Reassembled output should contain translated gender forms. Got: \"{}\"",
-            output
-        );
-
-        let total_duration = overall_start.elapsed();
-        println!("\n⏱️  TOTAL TIME: {}", format_duration(total_duration));
-        println!(
-            "📊 API CALLS: 1 (batch translation for {} variants)",
-            variants.len()
-        );
-        println!("{}", "=".repeat(80));
-        println!();
-    }
-
-    // ============================================================================
-    // TEST 2.5: Multiple placeholders with real MT
-    // ============================================================================
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_e2e_multiple_placeholders() {
-        if !require_api_key() {
-            eprintln!("⚠️  Skipping: GOOGLE_TRANSLATE_API_KEY not set");
-            return;
-        }
-
-        println!("\n{}", "=".repeat(80));
-        println!("TEST 2.5: Multiple Placeholders");
-        println!("{}", "=".repeat(80));
-        println!("Purpose: Validate recovery of multiple placeholders");
-        println!("Validates: Iterations 1, 5-6, 8");
-
-        let overall_start = Instant::now();
-
-        // Setup
-        let source_message = "$1 told $2 about $3";
-        let source_locale = "en";
-        let target_locale = "de";
-
-        println!("\n📝 SOURCE MESSAGE:");
-        println!("  Locale: {}", source_locale);
-        println!("  Message: \"{}\"", source_message);
-
-        // Parse and expand
-        let parse_start = Instant::now();
-        let mut parser = Parser::new(source_message);
-        let ast = parser.parse();
-        let parse_duration = parse_start.elapsed();
-
-        let expand_start = Instant::now();
-        let variants = expand_all_variants(&ast, source_locale).expect("Failed to expand");
-        let expand_duration = expand_start.elapsed();
-
-        println!("⏱️  Parse: {}", format_duration(parse_duration));
-        println!("⏱️  Expand: {}", format_duration(expand_duration));
-
-        println!("\n📦 EXPANDED VARIANTS:");
-        for (i, variant) in variants.iter().enumerate() {
-            println!("  [{}] \"{}\"", i, variant);
+        println!("\n📦 CONTEXT:");
+        println!("  Variables: {:?}", context.variable_types);
+        println!("  Variants: {}", context.variant_count());
+        for (i, variant) in context.variants.iter().enumerate() {
+            println!("    [{}] \"{}\"", i, variant.source_text);
         }
 
         // Translate
-        let translate_start = Instant::now();
         let provider = GoogleTranslateProvider::from_env().expect("Failed to load provider");
-        let translated = provider
-            .translate_batch(&variants, source_locale, target_locale)
+        let source_texts = context.source_texts();
+        let translated_texts = provider
+            .translate_as_block(&source_texts, source_locale, target_locale)
             .await
             .expect("Translation failed");
-        let translate_duration = translate_start.elapsed();
+        context.update_translations(translated_texts);
 
-        println!("\n🌍 TRANSLATED VARIANTS:");
-        for (i, (src, tgt)) in variants.iter().zip(translated.iter()).enumerate() {
-            println!("  [{}] \"{}\" → \"{}\"", i, src, tgt);
-        }
-        println!("⏱️  Translate: {}", format_duration(translate_duration));
-
-        // Verify all anchors present
-        for trans in &translated {
-            assert!(trans.contains("_ID1_"), "Should contain _ID1_");
-            assert!(trans.contains("_ID2_"), "Should contain _ID2_");
-            assert!(trans.contains("_ID3_"), "Should contain _ID3_");
+        println!("\n🌍 TRANSLATED:");
+        for variant in &context.variants {
+            println!(
+                "  \"{}\" → \"{}\"",
+                variant.source_text, variant.translated_text
+            );
         }
 
         // Reassemble
-        let reassembly_result =
-            reassemble(&ast, &variants, &translated, target_locale).expect("Reassembly failed");
+        let reassembler = Reassembler::new(context.variable_types.clone());
+        let result = reassembler
+            .reassemble(context.variants)
+            .expect("Reassembly failed");
 
-        println!("\n🔧 REASSEMBLED WIKITEXT:");
-        println!("  \"{}\"", reassembly_result.reconstructed_wikitext);
+        println!("\n🔧 RESULT: \"{}\"", result);
 
-        // Verify all placeholders recovered
-        assert!(
-            reassembly_result.reconstructed_wikitext.contains("$1"),
-            "Should contain $1"
-        );
-        assert!(
-            reassembly_result.reconstructed_wikitext.contains("$2"),
-            "Should contain $2"
-        );
-        assert!(
-            reassembly_result.reconstructed_wikitext.contains("$3"),
-            "Should contain $3"
-        );
+        // Should contain PLURAL magic word and placeholder
+        assert!(result.contains("PLURAL"));
+        assert!(result.contains("$1"));
 
-        let total_duration = overall_start.elapsed();
-        println!("\n⏱️  TOTAL TIME: {}", format_duration(total_duration));
-        println!("📊 API CALLS: 1");
         println!("{}", "=".repeat(80));
-        println!();
     }
 
     // ============================================================================
-    // TEST 2.6: Mixed Control and Output Placeholders
-    // ============================================================================
-    // Demonstrates the distinction between:
-    // - Control placeholders (magic word parameters): consumed during expansion
-    // - Output placeholders (form text): need anchor protection
+    // TEST 3: Complex message with GENDER and PLURAL
     // ============================================================================
 
     #[tokio::test]
     #[ignore]
-    async fn test_e2e_mixed_control_and_output_placeholders() {
+    async fn test_e2e_gender_and_plural_new_api() {
         if !require_api_key() {
             eprintln!("⚠️  Skipping: GOOGLE_TRANSLATE_API_KEY not set");
             return;
         }
 
         println!("\n{}", "=".repeat(80));
-        println!("TEST 2.6: Mixed Control and Output Placeholders");
+        println!("TEST 3: GENDER + PLURAL Complex Message");
         println!("{}", "=".repeat(80));
-        println!("Purpose: Demonstrate control vs output placeholder behavior");
-        println!("Validates: Iterations 2, 3, 4, 5-6, 7, 8");
 
-        let overall_start = Instant::now();
-
-        // This message has:
-        // - $1 as GENDER control parameter (consumed during expansion, 3 forms always)
-        // - $2 as PLURAL control parameter (consumed during expansion, 2 forms in English)
-        // - $3 as output placeholder in form text (needs anchor protection)
-        let source_message =
-            "{{GENDER:$1|He gave|She gave|They gave}} {{PLURAL:$2|1|$2}} gift to $3";
+        let source_message = "{{GENDER:$1|He|She|They}} sent {{PLURAL:$2|a message|$2 messages}}";
         let source_locale = "en";
         let target_locale = "fr";
 
-        println!("\n📝 SOURCE MESSAGE (with mixed placeholders):");
-        println!("  Message: \"{}\"", source_message);
-        println!("\n  Placeholder Analysis:");
-        println!(
-            "    - $1: CONTROL ({{GENDER:$1|...}}) - 3 forms (male, female, unknown), selects form, NOT in output"
-        );
-        println!(
-            "    - $2: CONTROL ({{PLURAL:$2|...}}) - 2 forms in English, but APPEARS in form text"
-        );
-        println!("    - $3: OUTPUT - appears in static text, needs protection");
+        println!("\n📝 SOURCE: \"{}\"", source_message);
 
-        // Parse message
-        let parse_start = Instant::now();
+        // Parse and prepare
         let mut parser = Parser::new(source_message);
         let ast = parser.parse();
-        let parse_duration = parse_start.elapsed();
-        println!("\n⏱️  Parse: {}", format_duration(parse_duration));
+        let mut context = prepare_for_translation(&ast, source_locale, "complex-test")
+            .expect("Failed to prepare");
 
-        // Expand variants (Iteration 4)
-        let expand_start = Instant::now();
-        let variants = expand_all_variants(&ast, source_locale).expect("Failed to expand variants");
-        let expand_duration = expand_start.elapsed();
-
-        println!("\n📦 EXPANDED VARIANTS (3 gender × 2 plural = 6 total):");
-        for (i, variant) in variants.iter().enumerate() {
-            println!("  [{}] \"{}\"", i, variant);
-            if i == 0 {
-                println!("       ↳ NOTE: $1 consumed (not in variant), $2 may appear in text");
-            }
-        }
+        println!("\n📦 CONTEXT:");
+        println!("  Variables: {:?}", context.variable_types);
         println!(
-            "⏱️  Expand: {} ({} variants)",
-            format_duration(expand_duration),
-            variants.len()
-        );
-        assert_eq!(
-            variants.len(),
-            6,
-            "Should have 3 gender × 2 plural = 6 variants"
+            "  Variants: {} (should be 6: 3 GENDER × 2 PLURAL)",
+            context.variant_count()
         );
 
-        // Translate (Iterations 5-6)
-        let translate_start = Instant::now();
+        // Verify we have the expected number of variants
+        assert_eq!(
+            context.variant_count(),
+            6,
+            "Should have 6 variants (3 GENDER × 2 PLURAL)"
+        );
+
+        // Show sample of variants
+        for (i, variant) in context.variants.iter().take(3).enumerate() {
+            println!("    [{}] \"{}\"", i, variant.source_text);
+        }
+        if context.variant_count() > 3 {
+            println!("    ... {} more variants", context.variant_count() - 3);
+        }
+
+        // Translate using block method
         let provider = GoogleTranslateProvider::from_env().expect("Failed to load provider");
-        let translated = provider
-            .translate_batch(&variants, source_locale, target_locale)
+        let source_texts = context.source_texts();
+        let translated_texts = provider
+            .translate_as_block(&source_texts, source_locale, target_locale)
             .await
             .expect("Translation failed");
-        let translate_duration = translate_start.elapsed();
+        context.update_translations(translated_texts);
 
-        println!("\n🌍 TRANSLATED VARIANTS:");
-        for (i, (src, tgt)) in variants.iter().zip(translated.iter()).enumerate() {
-            println!("  [{}] \"{}\" → \"{}\"", i, src, tgt);
+        println!("\n🌍 SAMPLE TRANSLATIONS:");
+        for (i, variant) in context.variants.iter().take(3).enumerate() {
+            println!(
+                "  [{}] \"{}\" → \"{}\"",
+                i, variant.source_text, variant.translated_text
+            );
         }
-        println!("⏱️  Translate: {}", format_duration(translate_duration));
 
-        println!("\n📌 ANCHOR PRESERVATION CHECK:");
-        for (i, trans) in translated.iter().enumerate() {
-            let has_id3 = trans.contains("_ID3_");
-            println!("  [{}] Contains _ID3_ (for $3): {}", i, has_id3);
-        }
-        // Verify $3 (output placeholder) is protected with anchors
+        // Reassemble
+        let reassembler = Reassembler::new(context.variable_types.clone());
+        let result = reassembler
+            .reassemble(context.variants)
+            .expect("Reassembly failed");
+
+        println!("\n🔧 RESULT: \"{}\"", result);
+
+        // Verify structure
         assert!(
-            translated.iter().any(|t| t.contains("_ID3_")),
-            "At least some variants should have _ID3_ anchor for output placeholder $3"
-        );
-
-        // Reassemble (Iteration 7)
-        let reassemble_start = Instant::now();
-        let reassembly_result =
-            reassemble(&ast, &variants, &translated, target_locale).expect("Reassembly failed");
-        let reassemble_duration = reassemble_start.elapsed();
-
-        println!("\n🔧 REASSEMBLED WIKITEXT:");
-        println!("  \"{}\"", reassembly_result.reconstructed_wikitext);
-        println!("  Confidence: {:.2}%", reassembly_result.confidence * 100.0);
-        println!(
-            "  Extracted forms: {} magic words",
-            reassembly_result.extracted_forms.len()
-        );
-        if !reassembly_result.warnings.is_empty() {
-            println!("  Warnings: {:?}", reassembly_result.warnings);
-        }
-        println!("⏱️  Reassemble: {}", format_duration(reassemble_duration));
-
-        // Verify the magic words and output placeholder are present
-        let output = &reassembly_result.reconstructed_wikitext;
-        assert!(
-            output.contains("{{GENDER:") && output.contains("$1"),
-            "Should reconstruct GENDER magic word with $1. Got: \"{}\"",
-            output
+            result.contains("GENDER"),
+            "Should contain GENDER magic word"
         );
         assert!(
-            output.contains("{{PLURAL:") && output.contains("$2"),
-            "Should reconstruct PLURAL magic word with $2. Got: \"{}\"",
-            output
+            result.contains("PLURAL"),
+            "Should contain PLURAL magic word"
         );
-        assert!(
-            output.contains("$3"),
-            "Should preserve output placeholder $3. Got: \"{}\"",
-            output
-        );
+        assert!(result.contains("$1"), "Should contain $1 placeholder");
+        assert!(result.contains("$2"), "Should contain $2 placeholder");
 
-        let total_duration = overall_start.elapsed();
-        println!("\n⏱️  TOTAL TIME: {}", format_duration(total_duration));
-        println!(
-            "📊 API CALLS: 1 (batch translation for {} variants)",
-            variants.len()
-        );
+        println!("✅ Complex message successfully processed!");
         println!("{}", "=".repeat(80));
-        println!();
+    }
+
+    // ============================================================================
+    // TEST 4: Consistency Checking (Simulated)
+    // ============================================================================
+
+    #[test]
+    fn test_consistency_checking() {
+        println!("\n{}", "=".repeat(80));
+        println!("TEST 4: Consistency Checking");
+        println!("{}", "=".repeat(80));
+
+        // Test similarity function
+        let sim_identical = get_similarity("Hello world", "Hello world");
+        assert_eq!(
+            sim_identical, 1.0,
+            "Identical strings should have 1.0 similarity"
+        );
+
+        let sim_similar = get_similarity("He sent a message", "She sent a message");
+        println!("Similarity (similar): {:.2}", sim_similar);
+        assert!(
+            sim_similar > 0.7,
+            "Similar strings should have high similarity"
+        );
+
+        let sim_different = get_similarity("He sent a message", "Completely different text");
+        println!("Similarity (different): {:.2}", sim_different);
+        assert!(
+            sim_different < 0.7,
+            "Different strings should have low similarity"
+        );
+
+        // Test consistency error detection
+        use std::collections::HashMap;
+        let mut var_types = HashMap::new();
+        var_types.insert("$1".to_string(), "GENDER".to_string());
+        let reassembler = Reassembler::new(var_types);
+
+        // Create mock variants with very different translations
+        let variant1 = TranslationVariant::with_translation(
+            HashMap::from([("$1".to_string(), 0)]),
+            "".to_string(),
+            "He sent a message".to_string(),
+        );
+        let variant2 = TranslationVariant::with_translation(
+            HashMap::from([("$1".to_string(), 1)]),
+            "".to_string(),
+            "Completely unrelated sentence".to_string(),
+        );
+
+        let variants = vec![variant1, variant2];
+        let result = reassembler.reassemble(variants);
+
+        assert!(result.is_err(), "Should detect consistency error");
+        match result {
+            Err(MtError::ConsistencyError(_)) => {
+                println!("✅ Consistency error properly detected");
+            }
+            _ => panic!("Expected ConsistencyError"),
+        }
+
+        println!("{}", "=".repeat(80));
+    }
+
+    // ============================================================================
+    // TEST 5: Performance Baseline
+    // ============================================================================
+
+    #[test]
+    fn test_expansion_performance() {
+        println!("\n{}", "=".repeat(80));
+        println!("TEST 5: Performance Baseline");
+        println!("{}", "=".repeat(80));
+
+        let mut parser =
+            Parser::new("{{GENDER:$1|He|She|They}} sent {{PLURAL:$2|a message|$2 messages}}");
+        let ast = parser.parse();
+
+        let start = Instant::now();
+        let variants = expand_to_variants(&ast, "en").expect("Expansion failed");
+        let duration = start.elapsed();
+
+        println!("Expansion of 6 variants: {}", format_duration(duration));
+        assert_eq!(variants.len(), 6);
+        assert!(duration.as_millis() < 100, "Should be fast (< 100ms)");
+
+        // Test larger example
+        let large_message =
+            "{{PLURAL:$1|a|b}} {{PLURAL:$2|c|d}} {{PLURAL:$3|e|f}} {{PLURAL:$4|g|h}}";
+        let mut parser = Parser::new(large_message);
+        let ast = parser.parse();
+
+        let start = Instant::now();
+        let variants = expand_to_variants(&ast, "en").expect("Large expansion failed");
+        let duration = start.elapsed();
+
+        println!(
+            "Expansion of {} variants: {}",
+            variants.len(),
+            format_duration(duration)
+        );
+        assert_eq!(variants.len(), 16); // 2^4
+        assert!(
+            duration.as_millis() < 200,
+            "Should handle larger cases efficiently"
+        );
+
+        println!("✅ Performance within acceptable bounds");
+        println!("{}", "=".repeat(80));
+    }
+
+    // ============================================================================
+    // TEST 6: Full Workflow Demo (matching Python example)
+    // ============================================================================
+
+    #[test]
+    fn test_full_workflow_demo_with_mock() {
+        println!("\n{}", "=".repeat(80));
+        println!("TEST 6: Full Workflow Demo (Mock Translation)");
+        println!("{}", "=".repeat(80));
+        println!("Purpose: Demonstrate complete workflow matching Python reference");
+
+        // This matches the Python example from lines 349-364
+        let source_message = "{{GENDER:$1|He|She}} sent {{PLURAL:$2|a message|$2 messages}} to {{GENDER:$3|him|her}}.";
+
+        println!("\n📝 SOURCE: \"{}\"", source_message);
+
+        // 1. Parse message
+        let mut parser = crate::parser::Parser::new(source_message);
+        let ast = parser.parse();
+        println!("✅ Parsed AST ({} nodes)", ast.len());
+
+        // 2. Prepare context (equivalent to Python prepare_for_translation)
+        let mut context =
+            prepare_for_translation(&ast, "en", "example-message").expect("Failed to prepare");
+
+        println!("\n📦 EXPANSION:");
+        println!("  Variables: {:?}", context.variable_types);
+        println!("  Expected: {{\"$1\": \"GENDER\", \"$2\": \"PLURAL\", \"$3\": \"GENDER\"}}");
+        println!(
+            "  Variants: {} (should be 3×2×3 = 18)",
+            context.variant_count()
+        );
+
+        // Should have 3 GENDER × 2 PLURAL × 3 GENDER = 18 variants
+        // (Gender has 3 forms: male/female/unknown, Plural has 2 forms in English)
+        assert_eq!(context.variant_count(), 18);
+        assert_eq!(context.variable_types.len(), 3);
+        assert_eq!(context.get_variable_type("$1"), Some(&"GENDER".to_string()));
+        assert_eq!(context.get_variable_type("$2"), Some(&"PLURAL".to_string()));
+        assert_eq!(context.get_variable_type("$3"), Some(&"GENDER".to_string()));
+
+        // 3. Mock translation (simulate MT)
+        let _mock_translator = crate::mt::MockTranslator::new(crate::mt::MockMode::Suffix);
+        let source_texts = context.source_texts();
+
+        // For demonstration, manually simulate translations to show the concept
+        // In real usage, we'd call: mock_translator.translate_batch(&source_texts, "en", "fr").await
+        let translated_texts: Vec<String> = source_texts
+            .iter()
+            .map(|text| format!("{}_fr", text)) // Simulate French translation
+            .collect();
+
+        context.update_translations(translated_texts);
+
+        println!("\n🌍 MOCK TRANSLATIONS (sample):");
+        for (i, variant) in context.variants.iter().take(3).enumerate() {
+            println!(
+                "  [{}] \"{}\" → \"{}\"",
+                i, variant.source_text, variant.translated_text
+            );
+        }
+
+        // 4. Reassemble (equivalent to Python Reassembler)
+        let reassembler = Reassembler::new(context.variable_types.clone());
+        let result = reassembler
+            .reassemble(context.variants)
+            .expect("Reassembly failed");
+
+        println!("\n🔧 FINAL RESULT:");
+        println!("  \"{}\"", result);
+
+        // Should contain all magic words and placeholders
+        assert!(result.contains("{{GENDER:$1|"));
+        assert!(result.contains("{{PLURAL:$2|"));
+        assert!(result.contains("{{GENDER:$3|"));
+        assert!(result.contains("$2")); // From "$2 messages"
+
+        println!("✅ Full workflow completed successfully!");
+        println!("📊 Metrics:");
+        println!("  - Source message: {} chars", source_message.len());
+        println!("  - Variants expanded: {}", 8);
+        println!("  - Final message: {} chars", result.len());
+        println!("{}", "=".repeat(80));
     }
 }

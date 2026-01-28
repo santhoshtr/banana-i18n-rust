@@ -13,6 +13,8 @@ pub enum MtError {
     ReassemblyError(String),
     /// Inconsistent machine translations (same source translated differently)
     InconsistentVariants(String),
+    /// MT consistency check failed - translations too different to reassemble safely
+    ConsistencyError(String),
     /// Error during scope detection
     ScopeDetectionError(String),
     /// Invalid API configuration (missing keys, invalid credentials)
@@ -34,6 +36,7 @@ impl std::fmt::Display for MtError {
             MtError::TranslationError(msg) => write!(f, "Translation error: {}", msg),
             MtError::ReassemblyError(msg) => write!(f, "Reassembly error: {}", msg),
             MtError::InconsistentVariants(msg) => write!(f, "Inconsistent variants: {}", msg),
+            MtError::ConsistencyError(msg) => write!(f, "MT consistency error: {}", msg),
             MtError::ScopeDetectionError(msg) => write!(f, "Scope detection error: {}", msg),
             MtError::ConfigError(msg) => write!(f, "Configuration error: {}", msg),
             MtError::NetworkError(msg) => write!(f, "Network error: {}", msg),

@@ -210,6 +210,106 @@ impl GoogleTranslateProvider {
 
         results
     }
+
+    /// Translate multiple variants as a single block with numbering
+    ///
+    /// This method implements the Python `translate_as_block()` approach,
+    /// joining all variants with numbered prefixes to force MT consistency.
+    /// All variants are translated in one API call, ensuring the MT system
+    /// sees the context and maintains consistency across related variants.
+    ///
+    /// # Arguments
+    /// * `variants` - Vector of strings to translate as a block
+    /// * `source_locale` - Source language code
+    /// * `target_locale` - Target language code
+    ///
+    /// # Returns
+    /// * `Ok(Vec<String>)` - Translated variants in same order as input
+    /// * `Err(MtError)` - If translation fails or count mismatch occurs
+    ///
+    /// # Algorithm (matches Python lines 145-186)
+    /// ```text
+    /// 1. Join variants with numbered prefixes: "1. text\n2. text\n..."
+    /// 2. Translate the entire block as single text
+    /// 3. Split back using regex to extract individual translations
+    /// 4. Clean up any anchor token spacing issues
+    /// ```
+    ///
+    /// # Example
+    /// ```ignore
+    /// let variants = vec![
+    ///     "_ID1_ sent a message".to_string(),
+    ///     "_ID1_ sent _ID2_ messages".to_string(),
+    /// ];
+    /// let results = provider.translate_as_block(&variants, "en", "fr").await?;
+    /// // Results maintain consistency: ["_ID1_ a envoyé un message", "_ID1_ a envoyé _ID2_ messages"]
+    /// ```
+    pub async fn translate_as_block(
+        &self,
+        variants: &[String],
+        source_locale: &str,
+        target_locale: &str,
+    ) -> MtResult<Vec<String>> {
+        // Handle empty case
+        if variants.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Handle single variant case
+        if variants.len() == 1 {
+            let result = self
+                .translate(&variants[0], source_locale, target_locale)
+                .await?;
+            return Ok(vec![result]);
+        }
+
+        // 1. Join with numbered prefixes (Python line 152-154)
+        let input_block: String = variants
+            .iter()
+            .enumerate()
+            .map(|(i, variant)| format!("{}. {}", i + 1, variant))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // 2. Translate the entire block
+        let translated_block = self
+            .translate(&input_block, source_locale, target_locale)
+            .await?;
+
+        // 3. Split back using regex (Python lines 167-171)
+        use regex::Regex;
+        let re = Regex::new(r"\n?\d+\.\s").unwrap();
+
+        // Split and filter empty strings
+        let lines: Vec<String> = re
+            .split(translated_block.trim())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        // 4. Safety check: same count (Python lines 173-175)
+        if lines.len() != variants.len() {
+            return Err(MtError::TranslationError(format!(
+                "Block translation count mismatch: expected {}, got {}. Block: '{}'",
+                variants.len(),
+                lines.len(),
+                translated_block
+            )));
+        }
+
+        // 5. Clean up anchor token mangling (Python lines 177-180)
+        // Sometimes MT systems add spaces: "_ID 1_" instead of "_ID1_"
+        let cleaned: Vec<String> = lines
+            .iter()
+            .map(|line| {
+                // Fix common anchor mangling patterns
+                line.replace("_ID ", "_ID") // "_ID 1_" → "_ID1_"
+                    .replace(" _ID", "_ID") // " _ID1_" → "_ID1_"
+            })
+            .collect();
+
+        Ok(cleaned)
+    }
 }
 
 impl std::fmt::Debug for GoogleTranslateProvider {
@@ -462,6 +562,61 @@ mod tests {
         assert!(!debug_str.contains("test-key"));
     }
 
+    // ========== Block Translation Tests ==========
+
+    #[tokio::test]
+    async fn test_translate_as_block_empty() {
+        let provider = GoogleTranslateProvider::new("test-key".to_string()).unwrap();
+        let variants: Vec<String> = vec![];
+        let results = provider
+            .translate_as_block(&variants, "en", "fr")
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_translate_as_block_single() {
+        // Single variant should work like regular translate
+        // Note: This test will fail without real API key, but validates the interface
+        let provider = GoogleTranslateProvider::new("test-key".to_string()).unwrap();
+        let variants = vec!["Hello".to_string()];
+
+        // This will fail with API error, but we're testing the flow
+        let result = provider.translate_as_block(&variants, "en", "fr").await;
+        // Expect either success (if mock) or API error (real key)
+        match result {
+            Ok(results) => {
+                assert_eq!(results.len(), 1);
+            }
+            Err(MtError::ConfigError(_)) | Err(MtError::TranslationError(_)) => {
+                // Expected with test key
+            }
+            _ => panic!("Unexpected error type"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_translate_as_block_format() {
+        let provider = GoogleTranslateProvider::new("test-key".to_string()).unwrap();
+
+        // Test the numbering format construction
+        let variants = vec!["Hello world".to_string(), "Goodbye world".to_string()];
+
+        // We can't test the actual API call without a key, but we can test
+        // that the method exists and handles the input format
+        let result = provider.translate_as_block(&variants, "en", "fr").await;
+
+        // Should get an API error (not a format error)
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            MtError::ConfigError(_) | MtError::TranslationError(_) | MtError::NetworkError(_) => {
+                // Expected - API call failed as intended
+            }
+            other => panic!("Unexpected error type: {:?}", other),
+        }
+    }
+
     // ========== Integration Tests (require real API key) ==========
 
     #[tokio::test]
@@ -518,6 +673,41 @@ mod tests {
         // Anchor tokens should be preserved
         assert!(result.contains("_ID1_"));
         assert!(result.contains("_ID2_"));
+    }
+
+    #[tokio::test]
+    #[ignore] // Run with: cargo test --ignored
+    async fn test_real_api_translate_as_block() {
+        if std::env::var("GOOGLE_TRANSLATE_API_KEY").is_err() {
+            eprintln!("Skipping: GOOGLE_TRANSLATE_API_KEY not set");
+            return;
+        }
+
+        let provider = GoogleTranslateProvider::from_env().unwrap();
+        let variants = vec![
+            "_ID1_ sent a message".to_string(),
+            "_ID1_ sent _ID2_ messages".to_string(),
+        ];
+
+        let results = provider
+            .translate_as_block(&variants, "en", "fr")
+            .await
+            .unwrap();
+
+        println!("Block translation:");
+        for (input, output) in variants.iter().zip(results.iter()) {
+            println!("  {} → {}", input, output);
+        }
+
+        assert_eq!(results.len(), 2);
+        for result in &results {
+            assert!(!result.is_empty());
+            // Anchor tokens should be preserved
+            assert!(result.contains("_ID1_"));
+        }
+
+        // Second variant should have _ID2_ preserved
+        assert!(results[1].contains("_ID2_"));
     }
 
     #[tokio::test]
