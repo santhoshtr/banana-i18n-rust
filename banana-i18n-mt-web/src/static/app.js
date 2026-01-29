@@ -73,17 +73,22 @@ function handleLanguageChange(event) {
   currentTargetLang = event.target.value;
   showStatus(`🌍 Target language changed to ${currentTargetLang}`);
 
-  // Reset translations and saved state when language changes
+  // Reset all internal trackers for fresh translations
   translations = {};
   savedTranslations = {};
   updateExportButton();
+
+  // Close all expanded messages
+  document.querySelectorAll(".message-item[open]").forEach((item) => {
+    item.open = false;
+  });
 
   // Update all textareas to be empty
   document.querySelectorAll(".translation-textarea").forEach((textarea) => {
     textarea.value = "";
   });
 
-  // Reset all status indicators
+  // Reset all status indicators to "Pending"
   document.querySelectorAll(".message-status").forEach((status) => {
     status.textContent = "⏳ Pending";
     status.className = "message-status status-pending";
@@ -91,9 +96,18 @@ function handleLanguageChange(event) {
 
   // Hide/reset all save buttons
   document.querySelectorAll(".save-button").forEach((btn) => {
+    btn.style.display = "none";
     btn.disabled = false;
     btn.textContent = "💾 Save";
   });
+
+  // Hide all error messages
+  document.querySelectorAll(".error-message").forEach((error) => {
+    error.style.display = "none";
+  });
+
+  // Re-render message list to reset the "once" event listeners for auto-translation
+  renderMessageList();
 }
 
 /**
@@ -202,7 +216,7 @@ function handleTextareEdit(key) {
       status.className = "message-status status-edited";
     } else if (textarea.value === translations[key]) {
       // MT translation, not saved yet
-      status.textContent = "⚠ Needs Review";
+      status.textContent = "! Needs Review";
       status.className = "message-status status-needs-review";
     } else {
       // Modified from MT or empty
@@ -259,7 +273,7 @@ async function translateMessage(key) {
     translations[key] = data.translated;
 
     // Show "Needs Review" status instead of "Translated"
-    status.textContent = "⚠ Needs Review";
+    status.textContent = "! Needs Review";
     status.className = "message-status status-needs-review";
 
     // Show save button
@@ -287,7 +301,7 @@ function saveTranslation(key) {
   const saveButton = document.getElementById(`save-${key}`);
 
   if (!textarea.value.trim()) {
-    showStatus(`⚠ Cannot save empty translation for "${key}"`, "error");
+    showStatus(`! Cannot save empty translation for "${key}"`, "error");
     return;
   }
 
@@ -305,7 +319,9 @@ function saveTranslation(key) {
   showStatus(`✓ Saved translation for "${key}"`);
 
   // Close current message and open next one
-  const currentMessageItem = document.querySelector(`.message-item[data-key="${key}"]`);
+  const currentMessageItem = document.querySelector(
+    `.message-item[data-key="${key}"]`,
+  );
   if (currentMessageItem) {
     currentMessageItem.open = false;
 
@@ -345,7 +361,10 @@ function exportTranslations() {
   }
 
   if (translationCount === 0) {
-    showStatus("❌ No saved translations to export. Please save at least one translation.", "error");
+    showStatus(
+      "❌ No saved translations to export. Please save at least one translation.",
+      "error",
+    );
     return;
   }
 
@@ -371,7 +390,8 @@ function exportTranslations() {
  * Update export button state
  */
 function updateExportButton() {
-  const hasSavedTranslations = Object.keys(savedTranslations).length > 0 &&
+  const hasSavedTranslations =
+    Object.keys(savedTranslations).length > 0 &&
     Object.values(savedTranslations).some((value) => value && value.trim());
   exportBtn.disabled = !hasSavedTranslations;
 }
@@ -424,7 +444,7 @@ async function populateWikiDropdown() {
 
     wikis.forEach((wiki) => {
       const option = document.createElement("option");
-      option.value = wiki.code;
+      option.value = wiki.langcode;
       const displayName = `${wiki.langcode} - ${wiki.name}`;
       option.textContent = displayName;
       wikiSelect.appendChild(option);

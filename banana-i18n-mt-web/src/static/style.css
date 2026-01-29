@@ -27,6 +27,10 @@
   details:open::details-content {
     block-size: auto;
   }
+  h1 {
+    text-wrap: balance;
+    line-height: 1.5;
+  }
 }
 
 @layer base {
@@ -95,6 +99,7 @@
 
   h1 {
     margin-bottom: var(--font-size-x-small);
+    text-wrap: balanced;
   }
 
   .subtitle {
