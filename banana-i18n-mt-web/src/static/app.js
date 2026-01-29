@@ -1,6 +1,7 @@
 // Global state
 let sourceMessages = {};
 let translations = {};
+let savedTranslations = {}; // Tracks which messages have been explicitly saved
 let currentTargetLang = "es";
 let isLoaded = false;
 
@@ -42,8 +43,9 @@ async function handleFileUpload(event) {
       return;
     }
 
-    // Reset translations for new file
+    // Reset translations and saved state for new file
     translations = {};
+    savedTranslations = {};
 
     // Update UI
     fileName.textContent = `✓ ${file.name} (${Object.keys(sourceMessages).length} messages)`;
@@ -71,8 +73,9 @@ function handleLanguageChange(event) {
   currentTargetLang = event.target.value;
   showStatus(`🌍 Target language changed to ${currentTargetLang}`);
 
-  // Reset translations when language changes
+  // Reset translations and saved state when language changes
   translations = {};
+  savedTranslations = {};
   updateExportButton();
 
   // Update all textareas to be empty
@@ -84,6 +87,12 @@ function handleLanguageChange(event) {
   document.querySelectorAll(".message-status").forEach((status) => {
     status.textContent = "⏳ Pending";
     status.className = "message-status status-pending";
+  });
+
+  // Hide/reset all save buttons
+  document.querySelectorAll(".save-button").forEach((btn) => {
+    btn.disabled = false;
+    btn.textContent = "💾 Save";
   });
 }
 
@@ -130,20 +139,27 @@ function createMessageItem(key, sourceMessage) {
   const transSection = document.createElement("div");
   transSection.className = "message-section";
   transSection.innerHTML = `
-        <label>Translation (${currentTargetLang})</label>
-        <textarea 
-            class="translation-textarea" 
-            id="trans-${key}" 
-            placeholder="Translation will appear here..."
-            data-key="${key}"
-        ></textarea>
-        <div class="error-message" id="error-${key}" style="display: none;"></div>
-    `;
+         <label>Translation (${currentTargetLang})</label>
+         <textarea 
+             class="translation-textarea" 
+             id="trans-${key}" 
+             placeholder="Translation will appear here..."
+             data-key="${key}"
+         ></textarea>
+         <div class="error-message" id="error-${key}" style="display: none;"></div>
+         <button class="save-button" id="save-${key}" data-key="${key}" style="display: none;">💾 Save</button>
+     `;
 
   // Listen for edits
   const textarea = transSection.querySelector("textarea");
   textarea.addEventListener("input", () => {
     handleTextareEdit(key);
+  });
+
+  // Listen for save button clicks
+  const saveButton = transSection.querySelector(".save-button");
+  saveButton.addEventListener("click", () => {
+    saveTranslation(key);
   });
 
   content.appendChild(sourceSection);
@@ -172,13 +188,38 @@ function createMessageItem(key, sourceMessage) {
 function handleTextareEdit(key) {
   const status = document.getElementById(`status-${key}`);
   const textarea = document.getElementById(`trans-${key}`);
+  const saveButton = document.getElementById(`save-${key}`);
 
-  if (textarea.value !== translations[key]) {
-    status.textContent = "✏ Edited";
-    status.className = "message-status status-edited";
-  } else if (textarea.value) {
+  // Compare against the saved version
+  const isSaved = key in savedTranslations;
+  const savedValue = savedTranslations[key] || "";
+
+  if (textarea.value !== savedValue) {
+    // Value differs from saved version
+    if (isSaved) {
+      // Was saved before, now edited
+      status.textContent = "✏ Edited";
+      status.className = "message-status status-edited";
+    } else if (textarea.value === translations[key]) {
+      // MT translation, not saved yet
+      status.textContent = "⚠ Needs Review";
+      status.className = "message-status status-needs-review";
+    } else {
+      // Modified from MT or empty
+      status.textContent = "✏ Edited";
+      status.className = "message-status status-edited";
+    }
+    // Show save button when there's content
+    if (textarea.value) {
+      saveButton.style.display = "block";
+    } else {
+      saveButton.style.display = "none";
+    }
+  } else if (isSaved && textarea.value) {
+    // Matches saved version and is not empty
     status.textContent = "✓ Translated";
     status.className = "message-status status-translated";
+    saveButton.style.display = "none";
   }
 
   updateExportButton();
@@ -190,6 +231,7 @@ function handleTextareEdit(key) {
 async function translateMessage(key) {
   const textarea = document.getElementById(`trans-${key}`);
   const status = document.getElementById(`status-${key}`);
+  const saveButton = document.getElementById(`save-${key}`);
   const errorDiv = document.getElementById(`error-${key}`);
 
   status.textContent = "🔄 Translating...";
@@ -216,8 +258,12 @@ async function translateMessage(key) {
     textarea.value = data.translated;
     translations[key] = data.translated;
 
-    status.textContent = "✓ Translated";
-    status.className = "message-status status-translated";
+    // Show "Needs Review" status instead of "Translated"
+    status.textContent = "⚠ Needs Review";
+    status.className = "message-status status-needs-review";
+
+    // Show save button
+    saveButton.style.display = "block";
 
     updateExportButton();
   } catch (error) {
@@ -232,6 +278,33 @@ async function translateMessage(key) {
     showStatus(`❌ Failed to translate "${key}": ${error.message}`, "error");
   }
 }
+/**
+ * Save a translated message
+ */
+function saveTranslation(key) {
+  const textarea = document.getElementById(`trans-${key}`);
+  const status = document.getElementById(`status-${key}`);
+  const saveButton = document.getElementById(`save-${key}`);
+
+  if (!textarea.value.trim()) {
+    showStatus(`⚠ Cannot save empty translation for "${key}"`, "error");
+    return;
+  }
+
+  // Store the current textarea value as saved
+  savedTranslations[key] = textarea.value;
+
+  // Update status to "Translated" (green)
+  status.textContent = "✓ Translated";
+  status.className = "message-status status-translated";
+
+  // Hide save button
+  saveButton.style.display = "none";
+
+  updateExportButton();
+  showStatus(`✓ Saved translation for "${key}"`);
+}
+
 /**
  * Export translations to JSON file
  */
@@ -249,18 +322,18 @@ function exportTranslations() {
     },
   };
 
-  // Collect all translations from textareas
+  // Collect only saved translations
   let translationCount = 0;
-  for (const key of Object.keys(sourceMessages)) {
-    const textarea = document.getElementById(`trans-${key}`);
-    if (textarea && textarea.value) {
-      output[key] = textarea.value;
+  for (const key of Object.keys(savedTranslations)) {
+    const savedValue = savedTranslations[key];
+    if (savedValue && savedValue.trim()) {
+      output[key] = savedValue;
       translationCount++;
     }
   }
 
   if (translationCount === 0) {
-    showStatus("❌ No translations to export", "error");
+    showStatus("❌ No saved translations to export. Please save at least one translation.", "error");
     return;
   }
 
@@ -278,7 +351,7 @@ function exportTranslations() {
   URL.revokeObjectURL(url);
 
   showStatus(
-    `✓ Exported ${translationCount} translations to ${currentTargetLang}.json`,
+    `✓ Exported ${translationCount} saved translations to ${currentTargetLang}.json`,
   );
 }
 
@@ -286,10 +359,9 @@ function exportTranslations() {
  * Update export button state
  */
 function updateExportButton() {
-  const hasTranslations = Object.values(
-    document.querySelectorAll(".translation-textarea"),
-  ).some((textarea) => textarea.value);
-  exportBtn.disabled = !hasTranslations;
+  const hasSavedTranslations = Object.keys(savedTranslations).length > 0 &&
+    Object.values(savedTranslations).some((value) => value && value.trim());
+  exportBtn.disabled = !hasSavedTranslations;
 }
 
 /**
@@ -326,5 +398,34 @@ function escapeHtml(text) {
   return text.replace(/[&<>"']/g, (m) => map[m]);
 }
 
-// Initialize
-showStatus("👋 Ready to upload an i18n JSON file");
+async function populateWikiDropdown() {
+  try {
+    const response = await fetch("/static/languages.json");
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const wikis = await response.json();
+    const wikiSelect = document.getElementById("targetLang");
+
+    wikiSelect.innerHTML = "";
+
+    wikis.forEach((wiki) => {
+      const option = document.createElement("option");
+      option.value = wiki.code;
+      const displayName = `${wiki.langcode} - ${wiki.name}`;
+      option.textContent = displayName;
+      wikiSelect.appendChild(option);
+    });
+
+    console.log(`Loaded ${wikis.length} wikis to dropdown`);
+  } catch (error) {
+    console.error("Failed to load wiki list:", error);
+    console.log("📋 Using fallback wiki list");
+  }
+}
+document.addEventListener("DOMContentLoaded", async () => {
+  // Initialize
+  showStatus("👋 Ready to upload an i18n JSON file");
+  await populateWikiDropdown();
+});

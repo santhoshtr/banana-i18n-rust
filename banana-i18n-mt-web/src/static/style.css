@@ -14,6 +14,19 @@
     margin: 0;
     padding: 0;
   }
+  :root {
+    interpolate-size: allow-keywords;
+  }
+  details::details-content {
+    block-size: 0;
+    transition:
+      block-size 0.3s,
+      content-visibility 0.3s;
+    transition-behavior: allow-discrete;
+  }
+  details:open::details-content {
+    block-size: auto;
+  }
 }
 
 @layer base {
@@ -66,8 +79,6 @@
     padding: var(--font-size-x-large) var(--font-size-large);
     margin-bottom: var(--font-size-x-large);
     background-color: var(--background-color-base);
-    position: sticky;
-    top: 0;
     z-index: 100;
   }
 
@@ -249,6 +260,7 @@
     user-select: none;
     transition: background-color 0.2s ease;
     background-color: var(--background-color-neutral-subtle);
+    list-style-position: outside;
   }
 
   .message-summary:hover {
@@ -286,6 +298,11 @@
     background-color: var(--background-color-progressive-subtle);
     color: var(--color-progressive);
     animation: pulse 1.5s infinite;
+  }
+
+  .status-needs-review {
+    background-color: var(--background-color-warning-subtle);
+    color: var(--color-warning);
   }
 
   .status-translated {
@@ -375,6 +392,33 @@
     outline: none;
     border-color: var(--border-color-progressive--focus);
     box-shadow: 0 0 0 1px var(--box-shadow-color-progressive--focus);
+  }
+
+  .save-button {
+    background-color: var(--background-color-progressive);
+    color: var(--color-inverted);
+    padding: var(--font-size-small) var(--font-size-large);
+    border-radius: 0.375rem;
+    border: none;
+    cursor: pointer;
+    font-weight: 500;
+    margin-top: var(--font-size-small);
+    font-size: var(--font-size-small);
+    transition: background-color 0.2s ease;
+  }
+
+  .save-button:hover:not(:disabled) {
+    background-color: var(--background-color-progressive--hover);
+  }
+
+  .save-button:active:not(:disabled) {
+    background-color: var(--background-color-progressive--active);
+  }
+
+  .save-button:disabled {
+    background-color: var(--background-color-disabled);
+    color: var(--color-disabled);
+    cursor: not-allowed;
   }
 
   .textarea-actions {
