@@ -1,57 +1,32 @@
-# banana-i18n-rust: Workspace
+# banana-i18n-rust
 
 A Rust library for internationalization (i18n) with MediaWiki-style message formatting, localization, and machine translation support.
 
 This is a **Cargo workspace** containing three related crates for internationalization and translation workflows.
 
-## 📦 Workspace Structure
+## Workspace Modules
 
-### 🌍 [banana-i18n](./banana-i18n/) - Core i18n Library
+### banana-i18n - Core i18n Library
 
-The core internationalization library providing:
+The core internationalization library providing wikitext parsing, message localization with automatic fallback chains, PLURAL and GENDER magic words (56+ languages via ICU CLDR), placeholder substitution, and wiki markup handling. Includes a CLI tool for quick testing.
 
-- **Wikitext Parser** - Parse MediaWiki-style messages with magic words
-- **Message Localization** - Multi-locale support with automatic fallback chains  
-- **PLURAL Magic Word** - Automatic plural form selection (56+ languages via ICU)
-- **GENDER Magic Word** - Gender-based form selection
-- **Placeholder Substitution** - Support for $1, $2, etc.
-- **Wiki & External Links** - Parse and handle wiki markup
-- **CLI Tool** - `banana-i18n` binary for quick testing
+See [banana-i18n/README.md](./banana-i18n/) for detailed documentation.
 
-**Perfect for:** Applications that need MediaWiki-compatible message formatting and localization.
+### banana-i18n-mt - Machine Translation Support
 
-### 🤖 [banana-i18n-mt](./banana-i18n-mt/) - Machine Translation Support
+MT-assisted translation workflows for MediaWiki messages. Implements a 4-phase translation pipeline: message expansion to variants, batch translation via Google Translate API, reassembly using axis-collapsing algorithm, and placeholder recovery. Includes mock translator for testing and a CLI tool for MT workflows.
 
-MT-assisted translation workflows for MediaWiki messages:
+See [banana-i18n-mt/README.md](./banana-i18n-mt/) for detailed documentation including the comprehensive algorithm explanation.
 
-- **Message Expansion** - Convert magic words to translation variants
-- **Block Translation** - Translate related variants together for consistency
-- **Google Translate Integration** - Real translation with API key
-- **Mock Translator** - Test without API (suffix-based, reorder modes)
-- **Consistency Checking** - Detect MT hallucinations
-- **Reassembly Engine** - Reconstruct wikitext from translations
-- **CLI Tool** - `banana-mt` binary for MT workflows
+### banana-i18n-mt-web - Web Interface
 
-**Perfect for:** Localizers who need MT-assisted translation of complex MediaWiki messages.
+A web interface for translating i18n files with machine translation assistance. Built with Axum backend and vanilla JavaScript frontend. Supports file upload, interactive translation editing, AI-assisted suggestions, and JSON export.
 
-### 🌐 [banana-i18n-mt-web](./banana-i18n-mt-web/) - Web Interface for MT Translations
-
-A user-friendly web interface for translating i18n files with machine translation assistance:
-
-- **File Upload** - Load JSON i18n files (e.g., `en.json`) via file selector
-- **Interactive Translation** - Expandable message items with source and translation views
-- **AI Suggestions** - Automatic Google Translate suggestions for each message
-- **Edit & Review** - Edit machine translations with full wikitext support
-- **Export to JSON** - Download translated messages as `<language>.json`
-- **Vanilla Frontend** - No frameworks - clean HTML/CSS/JavaScript
-- **Axum Backend** - Fast Rust web server with `/api/translate` endpoint
-- **Multi-language** - Support for 5+ languages (extensible)
-
-**Perfect for:** Translators and localization teams who prefer a web-based workflow with MT assistance.
+See [banana-i18n-mt-web/README.md](./banana-i18n-mt-web/) for detailed documentation.
 
 ## Quick Start
 
-### Using Core i18n Only
+### Using Core i18n
 
 ```toml
 [dependencies]
@@ -74,7 +49,7 @@ println!("{}", result); // Hello, World!
 ### Using Machine Translation
 
 ```bash
-# With mock translator (no API key needed)
+# With mock translator
 cargo run --bin banana-mt -- --mock "Hello, \$1!" fr
 
 # With Google Translate
@@ -85,21 +60,10 @@ cargo run --bin banana-mt -- "{{PLURAL:\$1|item|items}}" es
 ### Using the Web Interface
 
 ```bash
-# Set up Google Translate API key
 export GOOGLE_TRANSLATE_API_KEY=your_key
-
-# Start the web server
 cargo run --bin banana-mt-web
-
-# Open in browser
-# http://127.0.0.1:3000
+# Open http://127.0.0.1:3000
 ```
-
-Then:
-1. Upload an i18n JSON file (e.g., `en.json`)
-2. Select target language (Spanish, French, German, Russian, Chinese, etc.)
-3. Review and edit machine translations
-4. Export translated file as `<language>.json`
 
 ## Building & Testing
 
@@ -122,16 +86,14 @@ cargo test -p banana-i18n-mt
 # Run CLI tools
 cargo run --bin banana-i18n -- en greeting "World"
 cargo run --bin banana-mt -- --mock "Hello, \$1!" fr
-
-# Run web server
 cargo run --bin banana-mt-web
 ```
 
-## Features Overview
+## Features
 
 ### PLURAL Magic Word
 
-Automatic plural form selection based on language rules:
+Automatic plural form selection based on ICU CLDR language rules:
 
 ```
 {{PLURAL:$1|is|are}} $1 item
@@ -139,7 +101,7 @@ Automatic plural form selection based on language rules:
 → "are 5 items" (plural)
 ```
 
-Supports 56+ languages with proper ICU plural rules.
+Supports 56+ languages with proper plural categories.
 
 ### GENDER Magic Word
 
@@ -170,107 +132,29 @@ Hello [[User:$1|$1]]!
 Visit [http://example.com our site] for more.
 ```
 
-## Architecture
+## Machine Translation Algorithm
 
-### banana-i18n
+The banana-i18n-mt module implements a sophisticated 4-phase translation pipeline:
 
-- `parser.rs` - Wikitext parser using tree-sitter
-- `ast.rs` - AST node definitions
-- `lib.rs` - Core localization engine
-- `fallbacks.rs` - Locale fallback logic
-- `loader.rs` - JSON message file loading
+1. **Expansion** - Generate all variant combinations (PLURAL × GENDER) with anchor token protection
+2. **Translation** - Batch translate variants via MT API for consistency
+3. **Reassembly** - Reconstruct wikitext using axis-collapsing algorithm with LCP/LCS extraction and word boundary snapping
+4. **Recovery** - Restore placeholders from anchor tokens
 
-### banana-i18n-mt
+This approach handles grammatical agreement, vowel elision, and case marking by translating complete sentences rather than word-by-word fragments.
 
-- `expansion.rs` - Message expansion to variants
-- `google_translate.rs` - Google Translate integration
-- `mock.rs` - Mock translator for testing
-- `reassembly.rs` - Reconstruct wikitext from translations
-- `data.rs` - Core MT data structures
-- `translator.rs` - Translator trait and utilities
-- `error.rs` - Error types
-
-### banana-i18n-mt-web
-
-- `main.rs` - Axum web server and routing
-- `static/index.html` - Interactive web interface
-- `static/app.js` - Vanilla JavaScript (no frameworks)
-- `static/style.css` - Responsive CSS styling
-- `/api/translate` - Backend translation API endpoint
-
-## Dependencies
-
-### banana-i18n
-
-```
-icu_locale = "2.1"
-icu_plurals = "2.1.1"
-tree-sitter = "0.26"
-tree-sitter-wikitext = "0.1.1"
-serde = "1.0"
-serde_json = "1.0"
-```
-
-### banana-i18n-mt
-
-```
-banana-i18n = { path = "../banana-i18n" }
-tokio = "1" (async runtime)
-reqwest = "0.13" (HTTP client for Google Translate)
-async-trait = "0.1" (async traits)
-regex = "1.10" (text processing)
-clap = "4.0" (CLI argument parsing)
-icu_plurals = "2.1.1" (plural rules)
-```
-
-### banana-i18n-mt-web
-
-```
-axum = "0.8" (web framework)
-tokio = "1" (async runtime)
-tower-http = "0.6" (HTTP utilities)
-serde/serde_json = "1.0" (JSON handling)
-banana-i18n = { path = "../banana-i18n" }
-banana-i18n-mt = { path = "../banana-i18n-mt" }
-```
-
-## Publishing
-
-Both crates are designed to be published separately to crates.io:
-
-```bash
-# Publish core library first
-cd banana-i18n
-cargo publish
-
-# Then publish MT support
-cd ../banana-i18n-mt
-cargo publish
-```
+See [banana-i18n-mt/README.md](./banana-i18n-mt/) for the comprehensive algorithm documentation with step-by-step examples.
 
 ## Documentation
 
-- **[banana-i18n README](./banana-i18n/README.md)** - Core library documentation
-- **[banana-i18n-mt README](./banana-i18n-mt/README.md)** - MT support documentation
-- **[banana-i18n-mt-web README](./banana-i18n-mt-web/README.md)** - Web interface documentation
-- **[banana-i18n-mt Algorithm](./banana-i18n-mt/Algorithm.md)** - Detailed MT algorithm explanation
-- **[AGENTS.md](./AGENTS.md)** - Build and development guidelines
+Each module has detailed documentation in its respective directory:
 
-## Examples
+- [banana-i18n README](./banana-i18n/) - Core library API and examples
+- [banana-i18n-mt README](./banana-i18n-mt/) - MT support and algorithm documentation
+- [banana-i18n-mt-web README](./banana-i18n-mt-web/) - Web interface usage guide
+- [AGENTS.md](./AGENTS.md) - Build and development guidelines
 
-### Core i18n: Locale Fallback
-
-```rust
-let mut i18n = I18n::new();
-i18n.with_messages_for_locale("en", en_messages)
-    .with_messages_for_locale("de", de_messages)
-    .with_verbosity(VerbosityLevel::Silent);
-
-// Falls back: de-at → de → en
-let msg = i18n.localize("de-at", "key", &vec![]);
-```
-
-### Machine Translation: Full Workflow
+## Example: Machine Translation Workflow
 
 ```rust
 use banana_i18n_mt::{prepare_for_translation, Reassembler, GoogleTranslateProvider, MachineTranslator};
@@ -293,9 +177,18 @@ let result = reassembler.reassemble(context.variants)?;
 println!("{}", result);
 ```
 
+## Publishing
+
+Crates can be published separately to crates.io:
+
+```bash
+cd banana-i18n && cargo publish
+cd ../banana-i18n-mt && cargo publish
+```
+
 ## Contributing
 
-Please refer to [AGENTS.md](./AGENTS.md) for development guidelines and coding standards.
+Refer to [AGENTS.md](./AGENTS.md) for development guidelines and coding standards.
 
 ## License
 
