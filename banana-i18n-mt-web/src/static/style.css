@@ -38,6 +38,8 @@
     background-color: var(--background-color-base);
     color: var(--color-base);
     line-height: var(--line-height-medium);
+    display: grid;
+    grid-template-columns: 40ch auto;
   }
 
   h1 {
@@ -80,6 +82,10 @@
     margin-bottom: var(--font-size-x-large);
     background-color: var(--background-color-base);
     z-index: 100;
+    position: sticky;
+    left: 0;
+    top: 0;
+    height: 100dvh;
   }
 
   .header-content {
@@ -98,19 +104,19 @@
   }
 
   .controls {
-    max-width: 1400px;
     margin: var(--font-size-large) auto 0;
     display: flex;
     gap: var(--font-size-large);
     align-items: center;
     flex-wrap: wrap;
-    padding: 0 var(--font-size-large);
+    padding: 0;
   }
 
   .control-group {
     display: flex;
     gap: var(--font-size-small);
-    align-items: center;
+    flex-direction: column;
+    align-items: start;
   }
 
   .file-label {
@@ -211,6 +217,7 @@
   /* Main Content */
   main {
     max-width: 1400px;
+    width: 100%;
     margin: 0 auto;
     padding: 0 var(--font-size-large);
     min-height: 60vh;
