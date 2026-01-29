@@ -1,0 +1,26 @@
+[package]
+name = "banana-i18n-mt"
+version = "0.1.0"
+edition = "2024"
+authors = ["Santhosh Thottingal <santhosh.thottingal@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/santhoshtr/banana-i18n-rust"
+description = "Machine translation support for banana-i18n"
+keywords = ["localization", "translation", "machine-translation", "mt", "i18n"]
+categories = ["localization", "text-processing"]
+readme = "README.md"
+
+[[bin]]
+name = "banana-mt"
+path = "src/bin/banana-mt.rs"
+
+[dependencies]
+banana-i18n = { path = "../banana-i18n", version = "0.1.0" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+reqwest = { version = "0.13", features = ["json"] }
+async-trait = "0.1"
+regex = "1.10"
+clap = { version = "4.0", features = ["derive"] }
+icu_plurals = "2.1.1"
+icu_locale = "2.1"
+serde_json = "1.0"

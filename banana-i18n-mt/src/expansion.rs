@@ -29,7 +29,7 @@
 
 use super::data::{MessageContext, TranslationVariant};
 use super::error::{MtError, MtResult};
-use crate::ast::{AstNode, AstNodeList};
+use banana_i18n::ast::{AstNode, AstNodeList};
 use std::collections::HashMap;
 
 // ICU dependencies for plural rules (kept from original implementation)
@@ -427,7 +427,7 @@ pub fn get_gender_forms() -> Vec<GenderForm> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::Parser;
+    use banana_i18n::parser::Parser;
 
     fn parse(text: &str) -> AstNodeList {
         let mut parser = Parser::new(text);

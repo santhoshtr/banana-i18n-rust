@@ -1,8 +1,8 @@
-use banana_i18n::mt::{
+use banana_i18n::parser::Parser;
+use banana_i18n_mt::{
     GoogleTranslateProvider, MachineTranslator, MockMode, MockTranslator, Reassembler,
     prepare_for_translation,
 };
-use banana_i18n::parser::Parser;
 use clap::{Arg, Command};
 use std::env;
 

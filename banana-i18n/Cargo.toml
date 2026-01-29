@@ -1,0 +1,23 @@
+[package]
+name = "banana-i18n"
+version = "0.1.0"
+edition = "2024"
+authors = ["Santhosh Thottingal <santhosh.thottingal@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/santhoshtr/banana-i18n-rust"
+description = "Core i18n library with MediaWiki-style message formatting and localization."
+keywords = ["localization", "internationalization", "i18n", "l10n", "wikipedia"]
+categories = ["localization", "text-processing"]
+readme = "README.md"
+
+[[bin]]
+name = "banana-i18n"
+path = "src/main.rs"
+
+[dependencies]
+icu_locale = "2.1"
+icu_plurals = "2.1.1"
+tree-sitter = "0.26"
+tree-sitter-wikitext = "0.1.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

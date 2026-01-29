@@ -13,7 +13,7 @@
 #[cfg(test)]
 mod tests {
     use super::super::*;
-    use crate::parser::Parser;
+    use banana_i18n::parser::Parser;
     use std::time::Instant;
 
     /// Helper to format timing output
@@ -421,7 +421,7 @@ mod tests {
         println!("\n📝 SOURCE: \"{}\"", source_message);
 
         // 1. Parse message
-        let mut parser = crate::parser::Parser::new(source_message);
+        let mut parser = banana_i18n::parser::Parser::new(source_message);
         let ast = parser.parse();
         println!("✅ Parsed AST ({} nodes)", ast.len());
 
@@ -446,7 +446,7 @@ mod tests {
         assert_eq!(context.get_variable_type("$3"), Some(&"GENDER".to_string()));
 
         // 3. Mock translation (simulate MT)
-        let _mock_translator = crate::mt::MockTranslator::new(crate::mt::MockMode::Suffix);
+        let _mock_translator = crate::MockTranslator::new(crate::MockMode::Suffix);
         let source_texts = context.source_texts();
 
         // For demonstration, manually simulate translations to show the concept

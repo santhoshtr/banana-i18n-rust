@@ -1,260 +1,250 @@
- banana-i18n
+# banana-i18n-rust: Workspace
 
-A Rust library for internationalization (i18n) with MediaWiki-style message formatting and localization.
+A Rust library for internationalization (i18n) with MediaWiki-style message formatting, localization, and machine translation support.
 
-## Overview
+This is a **Cargo workspace** containing two related crates for internationalization and translation workflows.
 
-**banana-i18n-rust** is a robust i18n library designed to handle complex multilingual message formatting with support for:
+## 📦 Workspace Structure
 
-- **PLURAL magic words** - Automatic plural form selection based on ICU plural rules supporting 56+ languages
-- **GENDER magic words** - Gender-based form selection (masculine, feminine, neutral)
-- **Placeholder substitution** - Support for numbered placeholders ($1, $2, etc.)
-- **Wiki links** - Parsing and handling of wiki markup links
-- **External links** - Support for URLs and hyperlinks
-- **Locale fallback chains** - Automatic fallback from specific locales to more general ones (e.g., de-at → de → en)
-- **Verbosity-controlled logging** - Three levels of logging for debugging localization chains
+### 🌍 [banana-i18n](./banana-i18n/) - Core i18n Library
 
-## Features
+The core internationalization library providing:
 
-### PLURAL Magic Word
+- **Wikitext Parser** - Parse MediaWiki-style messages with magic words
+- **Message Localization** - Multi-locale support with automatic fallback chains  
+- **PLURAL Magic Word** - Automatic plural form selection (56+ languages via ICU)
+- **GENDER Magic Word** - Gender-based form selection
+- **Placeholder Substitution** - Support for $1, $2, etc.
+- **Wiki & External Links** - Parse and handle wiki markup
+- **CLI Tool** - `banana-i18n` binary for quick testing
 
-Selects the correct plural form based on a number and language rules. Uses ICU CLDR plural rules for accurate localization across different languages.
+**Perfect for:** Applications that need MediaWiki-compatible message formatting and localization.
 
-**Format:** `{{PLURAL:value|singular|plural}}`
+### 🤖 [banana-i18n-mt](./banana-i18n-mt/) - Machine Translation Support
 
-**Supported forms** (per language):
-- English: 2 forms (one, other)
-- Russian: 3 forms (one, few, many)
-- Polish: 3 forms
-- Arabic: 6 forms
-- French: 2 forms with special rules
-- Chinese: 1 form (no plural distinction)
-- **56+ languages** supported via ICU plural rules
+MT-assisted translation workflows for MediaWiki messages:
 
-**Examples:**
-```
-{{PLURAL:$1|There is|There are}} $1 item
-→ "There is 1 item" (with value=1)
-→ "There are 5 items" (with value=5)
+- **Message Expansion** - Convert magic words to translation variants
+- **Block Translation** - Translate related variants together for consistency
+- **Google Translate Integration** - Real translation with API key
+- **Mock Translator** - Test without API (suffix-based, reorder modes)
+- **Consistency Checking** - Detect MT hallucinations
+- **Reassembly Engine** - Reconstruct wikitext from translations
+- **CLI Tool** - `banana-mt` binary for MT workflows
 
-В коробке находится {{PLURAL:$1|предмет|предметов}}
-→ "В коробке находится предмет" (Russian, value=1)
-→ "В коробке находится предметов" (Russian, value=5)
-```
+**Perfect for:** Localizers who need MT-assisted translation of complex MediaWiki messages.
 
-### GENDER Magic Word
+## Quick Start
 
-Selects the correct form based on gender (male, female, neutral).
-
-**Format:** `{{GENDER:value|masculine|feminine|neutral}}`
-
-**Examples:**
-```
-{{GENDER:$1|He|She|They}} is here
-→ "He is here" (with gender=male)
-→ "She is here" (with gender=female)
-→ "They is here" (with gender=other)
-```
-
-### Placeholder Substitution
-
-Replace numbered placeholders with provided values.
-
-**Format:** `$1`, `$2`, `$3`, etc.
-
-**Examples:**
-```
-Hello, $1!
-→ "Hello, World!" (with $1=World)
-
-$1 sent a message to $2
-→ "Alice sent a message to Bob" (with $1=Alice, $2=Bob)
-```
-
-### Locale Fallback Chains
-
-Automatically fall back from specific locales to more general ones:
-
-- `de-at` → `de` → `en` (German Austria → German → English)
-- `zh-hans` → `zh` → `en` (Simplified Chinese → Chinese → English)
-- `fr-ca` → `fr` → `en` (Canadian French → French → English)
-
-Messages are loaded from the first available locale in the fallback chain.
-
-## Installation
-
-### As a Library
-
-Add to your `Cargo.toml`:
+### Using Core i18n Only
 
 ```toml
 [dependencies]
-banana-i18n = { path = "." }  # or from crates.io when published
+banana-i18n = { path = "./banana-i18n" }
+```
+
+```rust
+use banana_i18n::{LocalizedMessages, I18n};
+
+let mut messages = LocalizedMessages::new();
+messages.with_message("greeting", "Hello, $1!");
+
+let mut i18n = I18n::new();
+i18n.with_messages_for_locale("en", messages);
+
+let result = i18n.localize("en", "greeting", &vec!["World".to_string()]);
+println!("{}", result); // Hello, World!
+```
+
+### Using Machine Translation
+
+```bash
+# With mock translator (no API key needed)
+cargo run --bin banana-mt -- --mock "Hello, \$1!" fr
+
+# With Google Translate
+export GOOGLE_TRANSLATE_API_KEY=your_key
+cargo run --bin banana-mt -- "{{PLURAL:\$1|item|items}}" es
+```
+
+## Building & Testing
+
+```bash
+# Build entire workspace
+cargo build --workspace
+
+# Build specific crate
+cargo build -p banana-i18n
+cargo build -p banana-i18n-mt
+
+# Run all tests
+cargo test --workspace
+
+# Run specific crate tests
+cargo test -p banana-i18n
+cargo test -p banana-i18n-mt
+
+# Run CLI tools
+cargo run --bin banana-i18n -- en greeting "World"
+cargo run --bin banana-mt -- --mock "Hello, \$1!" fr
+```
+
+## Features Overview
+
+### PLURAL Magic Word
+
+Automatic plural form selection based on language rules:
+
+```
+{{PLURAL:$1|is|are}} $1 item
+→ "is 1 item" (singular)
+→ "are 5 items" (plural)
+```
+
+Supports 56+ languages with proper ICU plural rules.
+
+### GENDER Magic Word
+
+Gender-based form selection:
+
+```
+{{GENDER:$1|He|She|They}} is here
+→ "He is here" (male)
+→ "She is here" (female)  
+→ "They is here" (neutral)
+```
+
+### Locale Fallback
+
+Automatic fallback chains for missing messages:
+
+```
+de-at → de → en
+zh-cn → zh-hans → zh → en
+```
+
+### Wikitext Parsing
+
+Full support for MediaWiki message syntax:
+
+```
+Hello [[User:$1|$1]]!
+Visit [http://example.com our site] for more.
+```
+
+## Architecture
+
+### banana-i18n
+
+- `parser.rs` - Wikitext parser using tree-sitter
+- `ast.rs` - AST node definitions
+- `lib.rs` - Core localization engine
+- `fallbacks.rs` - Locale fallback logic
+- `loader.rs` - JSON message file loading
+
+### banana-i18n-mt
+
+- `expansion.rs` - Message expansion to variants
+- `google_translate.rs` - Google Translate integration
+- `mock.rs` - Mock translator for testing
+- `reassembly.rs` - Reconstruct wikitext from translations
+- `data.rs` - Core MT data structures
+- `translator.rs` - Translator trait and utilities
+- `error.rs` - Error types
+
+## Dependencies
+
+### banana-i18n
+
+```
+icu_locale = "2.1"
+icu_plurals = "2.1.1"
+tree-sitter = "0.26"
+tree-sitter-wikitext = "0.1.1"
+serde = "1.0"
 serde_json = "1.0"
 ```
 
-### From Source
+### banana-i18n-mt
 
-```bash
-git clone <repository>
-cd banana-i18n-rust
-cargo build --release
+```
+banana-i18n = { path = "../banana-i18n" }
+tokio = "1" (async runtime)
+reqwest = "0.13" (HTTP client for Google Translate)
+async-trait = "0.1" (async traits)
+regex = "1.10" (text processing)
+clap = "4.0" (CLI argument parsing)
+icu_plurals = "2.1.1" (plural rules)
 ```
 
-## Usage
+## Publishing
 
-### CLI Tool
-
-The library includes a command-line tool for testing and using localized messages.
-
-#### Basic Usage
+Both crates are designed to be published separately to crates.io:
 
 ```bash
-# Build the binary
-cargo build --release
+# Publish core library first
+cd banana-i18n
+cargo publish
 
-# Display help
-./target/release/banana-i18n
-
-# Localize a message
-./target/release/banana-i18n <locale> <message-key> [param1] [param2] ...
+# Then publish MT support
+cd ../banana-i18n-mt
+cargo publish
 ```
 
-#### Examples
+## Documentation
 
-```bash
-# Simple message with substitution
-./target/release/banana-i18n en greeting "World"
-# Output: Hello, World!
+- **[banana-i18n README](./banana-i18n/README.md)** - Core library documentation
+- **[banana-i18n-mt README](./banana-i18n-mt/README.md)** - MT support documentation
+- **[banana-i18n-mt Algorithm](./banana-i18n-mt/Algorithm.md)** - Detailed MT algorithm explanation
+- **[AGENTS.md](./AGENTS.md)** - Build and development guidelines
 
-# Plural forms
-./target/release/banana-i18n en plural "1"
-# Output: There is 1 item in the box
+## Examples
 
-./target/release/banana-i18n en plural "5"
-# Output: There are 5 items in the box
-
-# Gender-based forms
-./target/release/banana-i18n en pronoun "male"
-# Output: He is here
-
-./target/release/banana-i18n en pronoun "female"
-# Output: She is here
-
-# Russian (3-form plurals)
-./target/release/banana-i18n ru items "1"
-# Output: В коробке находится 1 предмет
-
-./target/release/banana-i18n ru items "5"
-# Output: В коробке находится 5 предметов
-
-# Locale fallback
-./target/release/banana-i18n de-at greeting "Wien"
-# Output: Guten Tag, Wien! (falls back from de-at → de)
-
-# Chinese
-./target/release/banana-i18n zh-hans greeting "北京"
-# Output: 你好，北京
-```
-
-#### Environment Variables
-
-Override the default messages directory:
-
-```bash
-I18N_MESSAGES_DIR=/path/to/messages ./target/release/banana-i18n en greeting "World"
-```
-
-### Using as a Library
+### Core i18n: Locale Fallback
 
 ```rust
-use banana_i18n::{I18n, loader};
+let mut i18n = I18n::new();
+i18n.with_messages_for_locale("en", en_messages)
+    .with_messages_for_locale("de", de_messages)
+    .with_verbosity(VerbosityLevel::Silent);
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load messages from directory
-    let mut i18n = I18n::new();
-    i18n.load_all_locales("i18n")?;
-
-    // Get a message with locale fallback
-    let message = i18n.get_message("en", "greeting");
-    println!("{}", message); // "Hello, World!" or key name
-
-    Ok(())
-}
+// Falls back: de-at → de → en
+let msg = i18n.localize("de-at", "key", &vec![]);
 ```
 
-## Message Format
+### Machine Translation: Full Workflow
 
-Messages are stored in JSON files with locale codes as filenames:
+```rust
+use banana_i18n_mt::{prepare_for_translation, Reassembler, GoogleTranslateProvider, MachineTranslator};
+use banana_i18n::parser::Parser;
 
-**File:** `en.json`
-```json
-{
-  "@metadata": {
-    "authors": ["Your Name"],
-    "description": "English messages"
-  },
-  "greeting": "Hello, $1!",
-  "plural": "There {{PLURAL:$1|is|are}} $1 item in the box",
-  "pronoun": "{{GENDER:$1|He|She|They}} is here"
-}
+let mut parser = Parser::new("{{GENDER:$1|He|She}} sent $1 items");
+let ast = parser.parse();
+
+let mut context = prepare_for_translation(&ast, "en", "msg")?;
+
+let provider = GoogleTranslateProvider::from_env()?;
+let translations = provider.translate_as_block(
+    &context.source_texts(),
+    "en", "fr"
+).await?;
+context.update_translations(translations);
+
+let reassembler = Reassembler::new(context.variable_types);
+let result = reassembler.reassemble(context.variants)?;
+println!("{}", result);
 ```
 
-**File:** `ru.json`
-```json
-{
-  "@metadata": {
-    "authors": ["Ваше имя"],
-    "description": "Russian messages"
-  },
-  "greeting": "Привет, $1!",
-  "items": "В коробке находится {{PLURAL:$1|предмет|предметов|предметов}}"
-}
-```
+## Contributing
 
-### JSON Format Specification
-
-- **@metadata** (optional): Document metadata (skipped during parsing)
-  - `authors`: List of translators
-  - `description`: Description of message set
-  - Other custom metadata fields are ignored
-
-- **Message keys** (required): Message strings with MediaWiki format
-  - Supports all magic words (PLURAL, GENDER)
-  - Supports placeholders ($1, $2, etc.)
-  - Supports wiki links ([[link]], [[link|display]])
-  - Supports external links ([http://url], [http://url text])
-
-### Core Components
-
-- **I18n struct**: Main entry point managing localized messages by locale
-- **LocalizedMessages**: Wrapper around HashMap for key-value message pairs
-- **AstNode enum**: Represents different types of wiki markup:
-  - `Placeholder` - Numbered variables ($1, $2)
-  - `Text` - Plain text content
-  - `InternalLink` - Wiki links [[page]] or [[page|text]]
-  - `ExternalLink` - URLs [http://example.com text]
-  - `Gender` - GENDER magic word
-  - `Plural` - PLURAL magic word
-- **Parser**: Converts MediaWiki message format strings into AST nodes
-- **Localizer**: Applies value substitution and performs localization
-
-### Localization Flow
-
-1. **Parse** - Convert message string to AST using wikitext parser
-2. **Localize** - Traverse AST and apply substitutions
-   - Replace placeholders with provided values
-   - Evaluate PLURAL forms based on language rules
-   - Evaluate GENDER forms based on provided gender
-3. **Fallback** - If message not found, try fallback locale chain
+Please refer to [AGENTS.md](./AGENTS.md) for development guidelines and coding standards.
 
 ## License
 
-MIT License - See LICENSE file for details
+MIT
 
-## References
+## Related Links
 
-- [MediaWiki Message Format Documentation](https://www.mediawiki.org/wiki/Localisation)
-- [ICU CLDR Plural Rules](https://cldr.unicode.org/index/cldr-spec/plural-rules)
-- [ISO 639-1 Language Codes](https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes)
-
+- [MediaWiki Localization](https://www.mediawiki.org/wiki/Localization)
+- [ICU Plural Rules](https://unicode-org.github.io/cldr-json/charts/latest/supplemental/language_plural_rules.html)
+- [MediaWiki Magic Words](https://www.mediawiki.org/wiki/Help:Magic_words)

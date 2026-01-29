@@ -16,8 +16,8 @@
 //! }
 //! ```
 
-use crate::mt::error::MtResult;
-use crate::mt::translator::MachineTranslator;
+use crate::error::MtResult;
+use crate::translator::MachineTranslator;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -97,7 +97,7 @@ impl MockTranslator {
 
     /// Apply translation logic based on the mode
     fn apply_translation(&self, text: &str, _source: &str, target: &str) -> MtResult<String> {
-        use crate::mt::error::MtError;
+        use crate::error::MtError;
 
         match &self.mode {
             MockMode::Suffix => {
@@ -297,7 +297,7 @@ mod tests {
         let result = mock.translate("hello", "en", "fr").await;
         assert!(result.is_err());
         match result {
-            Err(crate::mt::error::MtError::TranslationError(msg)) => {
+            Err(crate::error::MtError::TranslationError(msg)) => {
                 assert_eq!(msg, "API unavailable");
             }
             _ => panic!("Expected TranslationError"),

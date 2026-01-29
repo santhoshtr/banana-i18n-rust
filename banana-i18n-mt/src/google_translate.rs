@@ -32,8 +32,8 @@
 //! }
 //! ```
 
-use crate::mt::error::{MtError, MtResult};
-use crate::mt::translator::{MachineTranslator, normalize_locale, validate_locale};
+use crate::error::{MtError, MtResult};
+use crate::translator::{MachineTranslator, normalize_locale, validate_locale};
 use async_trait::async_trait;
 use serde_json::json;
 
@@ -199,7 +199,7 @@ impl GoogleTranslateProvider {
             .map(|t| {
                 t["translatedText"]
                     .as_str()
-                    .map(|s| s.to_string())
+                    .map(|s: &str| s.to_string())
                     .ok_or_else(|| {
                         MtError::TranslationError(
                             "Invalid API response: missing 'translatedText' field".to_string(),

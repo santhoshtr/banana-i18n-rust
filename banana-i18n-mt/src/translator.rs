@@ -27,7 +27,7 @@
 //! }
 //! ```
 
-use crate::mt::error::MtResult;
+use crate::error::MtResult;
 use async_trait::async_trait;
 
 /// Generic trait for machine translation providers
@@ -161,7 +161,7 @@ pub fn normalize_locale(locale: &str) -> String {
 /// ```
 pub fn validate_locale(locale: &str) -> MtResult<()> {
     if locale.is_empty() {
-        return Err(crate::mt::error::MtError::InvalidLocale(
+        return Err(crate::error::MtError::InvalidLocale(
             "Locale code is empty".to_string(),
         ));
     }
@@ -171,7 +171,7 @@ pub fn validate_locale(locale: &str) -> MtResult<()> {
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
-        return Err(crate::mt::error::MtError::InvalidLocale(format!(
+        return Err(crate::error::MtError::InvalidLocale(format!(
             "Invalid characters in locale code: {}",
             locale
         )));
@@ -236,7 +236,7 @@ mod tests {
 
     #[test]
     fn test_validate_locale_error_messages() {
-        use crate::mt::error::MtError;
+        use crate::error::MtError;
         match validate_locale("en@US") {
             Err(MtError::InvalidLocale(msg)) => {
                 assert!(msg.contains("Invalid characters"));

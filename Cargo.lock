@@ -104,17 +104,27 @@ dependencies = [
 name = "banana-i18n"
 version = "0.1.0"
 dependencies = [
+ "icu_locale",
+ "icu_plurals",
+ "serde",
+ "serde_json",
+ "tree-sitter",
+ "tree-sitter-wikitext",
+]
+
+[[package]]
+name = "banana-i18n-mt"
+version = "0.1.0"
+dependencies = [
  "async-trait",
+ "banana-i18n",
  "clap",
  "icu_locale",
  "icu_plurals",
  "regex",
  "reqwest",
- "serde",
  "serde_json",
  "tokio",
- "tree-sitter",
- "tree-sitter-wikitext",
 ]
 
 [[package]]
