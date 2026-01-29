@@ -2,7 +2,7 @@
 
 A Rust library for internationalization (i18n) with MediaWiki-style message formatting, localization, and machine translation support.
 
-This is a **Cargo workspace** containing two related crates for internationalization and translation workflows.
+This is a **Cargo workspace** containing three related crates for internationalization and translation workflows.
 
 ## 📦 Workspace Structure
 
@@ -33,6 +33,21 @@ MT-assisted translation workflows for MediaWiki messages:
 - **CLI Tool** - `banana-mt` binary for MT workflows
 
 **Perfect for:** Localizers who need MT-assisted translation of complex MediaWiki messages.
+
+### 🌐 [banana-i18n-mt-web](./banana-i18n-mt-web/) - Web Interface for MT Translations
+
+A user-friendly web interface for translating i18n files with machine translation assistance:
+
+- **File Upload** - Load JSON i18n files (e.g., `en.json`) via file selector
+- **Interactive Translation** - Expandable message items with source and translation views
+- **AI Suggestions** - Automatic Google Translate suggestions for each message
+- **Edit & Review** - Edit machine translations with full wikitext support
+- **Export to JSON** - Download translated messages as `<language>.json`
+- **Vanilla Frontend** - No frameworks - clean HTML/CSS/JavaScript
+- **Axum Backend** - Fast Rust web server with `/api/translate` endpoint
+- **Multi-language** - Support for 5+ languages (extensible)
+
+**Perfect for:** Translators and localization teams who prefer a web-based workflow with MT assistance.
 
 ## Quick Start
 
@@ -67,6 +82,25 @@ export GOOGLE_TRANSLATE_API_KEY=your_key
 cargo run --bin banana-mt -- "{{PLURAL:\$1|item|items}}" es
 ```
 
+### Using the Web Interface
+
+```bash
+# Set up Google Translate API key
+export GOOGLE_TRANSLATE_API_KEY=your_key
+
+# Start the web server
+cargo run --bin banana-mt-web
+
+# Open in browser
+# http://127.0.0.1:3000
+```
+
+Then:
+1. Upload an i18n JSON file (e.g., `en.json`)
+2. Select target language (Spanish, French, German, Russian, Chinese, etc.)
+3. Review and edit machine translations
+4. Export translated file as `<language>.json`
+
 ## Building & Testing
 
 ```bash
@@ -76,6 +110,7 @@ cargo build --workspace
 # Build specific crate
 cargo build -p banana-i18n
 cargo build -p banana-i18n-mt
+cargo build -p banana-i18n-mt-web
 
 # Run all tests
 cargo test --workspace
@@ -87,6 +122,9 @@ cargo test -p banana-i18n-mt
 # Run CLI tools
 cargo run --bin banana-i18n -- en greeting "World"
 cargo run --bin banana-mt -- --mock "Hello, \$1!" fr
+
+# Run web server
+cargo run --bin banana-mt-web
 ```
 
 ## Features Overview
@@ -152,6 +190,14 @@ Visit [http://example.com our site] for more.
 - `translator.rs` - Translator trait and utilities
 - `error.rs` - Error types
 
+### banana-i18n-mt-web
+
+- `main.rs` - Axum web server and routing
+- `static/index.html` - Interactive web interface
+- `static/app.js` - Vanilla JavaScript (no frameworks)
+- `static/style.css` - Responsive CSS styling
+- `/api/translate` - Backend translation API endpoint
+
 ## Dependencies
 
 ### banana-i18n
@@ -177,6 +223,17 @@ clap = "4.0" (CLI argument parsing)
 icu_plurals = "2.1.1" (plural rules)
 ```
 
+### banana-i18n-mt-web
+
+```
+axum = "0.8" (web framework)
+tokio = "1" (async runtime)
+tower-http = "0.6" (HTTP utilities)
+serde/serde_json = "1.0" (JSON handling)
+banana-i18n = { path = "../banana-i18n" }
+banana-i18n-mt = { path = "../banana-i18n-mt" }
+```
+
 ## Publishing
 
 Both crates are designed to be published separately to crates.io:
@@ -195,6 +252,7 @@ cargo publish
 
 - **[banana-i18n README](./banana-i18n/README.md)** - Core library documentation
 - **[banana-i18n-mt README](./banana-i18n-mt/README.md)** - MT support documentation
+- **[banana-i18n-mt-web README](./banana-i18n-mt-web/README.md)** - Web interface documentation
 - **[banana-i18n-mt Algorithm](./banana-i18n-mt/Algorithm.md)** - Detailed MT algorithm explanation
 - **[AGENTS.md](./AGENTS.md)** - Build and development guidelines
 

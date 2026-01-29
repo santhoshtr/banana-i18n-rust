@@ -1,0 +1,23 @@
+[package]
+name = "banana-i18n-mt-web"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1.49", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+banana-i18n = { path = "../banana-i18n" }
+banana-i18n-mt = { path = "../banana-i18n-mt" }
+
+[[bin]]
+name = "banana-mt-web"
+path = "src/main.rs"

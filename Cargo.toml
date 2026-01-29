@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "banana-i18n",
     "banana-i18n-mt",
+    "banana-i18n-mt-web",
 ]
 
 [workspace.package]

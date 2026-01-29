@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🍌 banana-i18n Machine Translation Web</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <h1>🍌 banana-i18n Machine Translation</h1>
+            <p class="subtitle">AI-Assisted Translation for MediaWiki i18n Files</p>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="fileInput" class="file-label">
+                    📁 Upload JSON File
+                    <input type="file" id="fileInput" accept=".json" style="display: none;">
+                </label>
+                <span id="fileName" class="file-name"></span>
+            </div>
+
+            <div class="control-group">
+                <label for="targetLang">🌍 Target Language:</label>
+                <select id="targetLang">
+                    <option value="es">Spanish (es)</option>
+                    <option value="fr">French (fr)</option>
+                    <option value="de">German (de)</option>
+                    <option value="ru">Russian (ru)</option>
+                    <option value="zh-hans">Chinese Simplified (zh-hans)</option>
+                </select>
+            </div>
+
+            <button id="exportBtn" class="export-btn" disabled>
+                💾 Export Translation
+            </button>
+        </div>
+
+        <div id="statusBar" class="status-bar"></div>
+    </header>
+
+    <main>
+        <div id="emptyState" class="empty-state">
+            <p>📂 Upload an i18n JSON file to get started</p>
+            <p class="small">Supported format: <code>{"greeting": "Hello, $1!", ...}</code></p>
+        </div>
+        <div id="messageList" class="message-list"></div>
+    </main>
+
+    <footer>
+        <p>🚀 Powered by <code>banana-i18n</code> and Google Translate</p>
+    </footer>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
