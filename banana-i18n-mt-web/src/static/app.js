@@ -13,6 +13,10 @@ const exportBtn = document.getElementById("exportBtn");
 const messageList = document.getElementById("messageList");
 const emptyState = document.getElementById("emptyState");
 const statusBar = document.getElementById("statusBar");
+const progressContainer = document.getElementById("progressContainer");
+const progressBar = document.getElementById("progressBar");
+const progressNumber = document.getElementById("progressNumber");
+const progressPercent = document.getElementById("progressPercent");
 
 // Event listeners
 fileInput.addEventListener("change", handleFileUpload);
@@ -108,6 +112,9 @@ function handleLanguageChange(event) {
 
   // Re-render message list to reset the "once" event listeners for auto-translation
   renderMessageList();
+
+  // Reset progress indicator
+  updateProgress();
 }
 
 /**
@@ -316,6 +323,7 @@ function saveTranslation(key) {
   saveButton.style.display = "none";
 
   updateExportButton();
+  updateProgress();
   showStatus(`✓ Saved translation for "${key}"`);
 
   // Close current message and open next one
@@ -394,6 +402,35 @@ function updateExportButton() {
     Object.keys(savedTranslations).length > 0 &&
     Object.values(savedTranslations).some((value) => value && value.trim());
   exportBtn.disabled = !hasSavedTranslations;
+}
+
+/**
+ * Update progress indicator
+ */
+function updateProgress() {
+  const totalMessages = Object.keys(sourceMessages).length;
+  const savedCount = Object.keys(savedTranslations).length;
+
+  if (totalMessages === 0) {
+    progressContainer.style.display = "none";
+    return;
+  }
+
+  // Show progress container
+  progressContainer.style.display = "flex";
+
+  // Calculate percentage
+  const percentage = (savedCount / totalMessages) * 100;
+
+  // Update progress bar value (0-100)
+  progressBar.value = percentage;
+  progressBar.max = 100;
+
+  // Update progress text with numbers
+  progressNumber.textContent = `${savedCount}/${totalMessages}`;
+
+  // Update percentage text
+  progressPercent.textContent = `(${Math.round(percentage)}%)`;
 }
 
 /**

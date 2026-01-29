@@ -90,6 +90,7 @@
     left: 0;
     top: 0;
     height: 100dvh;
+    border-right: 1px solid var(--border-color-base);
   }
 
   .header-content {
@@ -122,6 +123,73 @@
     gap: var(--font-size-small);
     flex-direction: column;
     align-items: start;
+  }
+
+  .progress-container {
+    display: flex;
+    gap: var(--font-size-small);
+    align-items: center;
+    flex-direction: column;
+    min-width: 180px;
+    position: absolute;
+    bottom: 1em;
+  }
+
+  .progress-bar {
+    width: 100%;
+    height: 8px;
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid var(--border-color-subtle);
+    border-radius: 999px;
+    background-color: var(--background-color-neutral-subtle);
+    overflow: hidden;
+  }
+
+  /* Webkit browsers (Chrome, Safari) */
+  .progress-bar::-webkit-progress-bar {
+    background-color: var(--background-color-neutral-subtle);
+    border-radius: 999px;
+    border: 1px solid var(--border-color-subtle);
+  }
+
+  .progress-bar::-webkit-progress-value {
+    background-color: var(--background-color-success);
+    border-radius: 999px;
+    transition: width 0.3s ease;
+  }
+
+  /* Firefox */
+  .progress-bar::-moz-progress-bar {
+    background-color: var(--background-color-success);
+    border-radius: 999px;
+    transition: width 0.3s ease;
+  }
+
+  .progress-text {
+    font-size: var(--font-size-small);
+    font-weight: 500;
+    color: var(--color-base);
+    text-align: center;
+    width: 100%;
+    display: flex;
+    gap: var(--font-size-x-small);
+    justify-content: center;
+    align-items: center;
+  }
+
+  #progressNumber {
+    background-color: var(--background-color-progressive-subtle);
+    color: var(--color-progressive);
+    padding: 0.25rem 0.5rem;
+    border-radius: 999px;
+    display: inline-block;
+    font-weight: 600;
+  }
+
+  #progressPercent {
+    color: var(--color-subtle);
+    font-size: var(--font-size-small);
   }
 
   .file-label {
