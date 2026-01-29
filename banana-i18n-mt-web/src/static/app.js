@@ -303,6 +303,18 @@ function saveTranslation(key) {
 
   updateExportButton();
   showStatus(`✓ Saved translation for "${key}"`);
+
+  // Close current message and open next one
+  const currentMessageItem = document.querySelector(`.message-item[data-key="${key}"]`);
+  if (currentMessageItem) {
+    currentMessageItem.open = false;
+
+    // Find and open the next message item
+    const nextMessageItem = currentMessageItem.nextElementSibling;
+    if (nextMessageItem && nextMessageItem.classList.contains("message-item")) {
+      nextMessageItem.open = true;
+    }
+  }
 }
 
 /**
