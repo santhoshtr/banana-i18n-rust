@@ -103,31 +103,20 @@ function renderMessageList() {
  * Create a single message detail element
  */
 function createMessageItem(key, sourceMessage) {
-  const div = document.createElement("div");
-  div.className = "message-item";
-  div.dataset.key = key;
+  const messageContainerEl = document.createElement("details");
+  messageContainerEl.name = "message-item";
+  messageContainerEl.className = "message-item";
+  messageContainerEl.dataset.key = key;
 
-  const summary = document.createElement("div");
+  const summary = document.createElement("summary");
   summary.className = "message-summary";
   summary.innerHTML = `
         <span class="message-key">${escapeHtml(key)}</span>
         <span class="message-status status-pending" id="status-${key}">⏳ Pending</span>
     `;
 
-  // Toggle expand/collapse
-  summary.addEventListener("click", () => {
-    const content = div.querySelector(".message-content");
-    if (content.style.display === "none") {
-      content.style.display = "grid";
-      summary.style.borderBottomColor = "#e9ecef";
-    } else {
-      content.style.display = "none";
-    }
-  });
-
   const content = document.createElement("div");
   content.className = "message-content";
-  content.style.display = "none";
 
   // Source message section
   const sourceSection = document.createElement("div");
@@ -160,22 +149,21 @@ function createMessageItem(key, sourceMessage) {
   content.appendChild(sourceSection);
   content.appendChild(transSection);
 
-  div.appendChild(summary);
-  div.appendChild(content);
+  messageContainerEl.appendChild(summary);
+  messageContainerEl.appendChild(content);
 
   // Auto-expand and translate on first open
-  summary.addEventListener(
-    "click",
+  messageContainerEl.addEventListener(
+    "toggle",
     async () => {
-      const isNowOpen = content.style.display !== "none";
-      if (isNowOpen && !translations[key] && !textarea.value) {
+      if (!translations[key] && !textarea.value) {
         await translateMessage(key);
       }
     },
     { once: true },
   );
 
-  return div;
+  return messageContainerEl;
 }
 
 /**
