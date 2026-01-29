@@ -238,11 +238,11 @@ impl GoogleTranslateProvider {
     /// # Example
     /// ```ignore
     /// let variants = vec![
-    ///     "_ID1_ sent a message".to_string(),
-    ///     "_ID1_ sent _ID2_ messages".to_string(),
+    ///     "777001 sent a message".to_string(),
+    ///     "777001 sent 777002 messages".to_string(),
     /// ];
     /// let results = provider.translate_as_block(&variants, "en", "fr").await?;
-    /// // Results maintain consistency: ["_ID1_ a envoyé un message", "_ID1_ a envoyé _ID2_ messages"]
+    /// // Results maintain consistency: ["777001 a envoyé un message", "777001 a envoyé 777002 messages"]
     /// ```
     pub async fn translate_as_block(
         &self,
@@ -298,13 +298,13 @@ impl GoogleTranslateProvider {
         }
 
         // 5. Clean up anchor token mangling (Python lines 177-180)
-        // Sometimes MT systems add spaces: "_ID 1_" instead of "_ID1_"
+        // Sometimes MT systems add spaces: "777 001" instead of "777001"
         let cleaned: Vec<String> = lines
             .iter()
             .map(|line| {
                 // Fix common anchor mangling patterns
-                line.replace("_ID ", "_ID") // "_ID 1_" → "_ID1_"
-                    .replace(" _ID", "_ID") // " _ID1_" → "_ID1_"
+                line.replace("777 ", "777") // "777 001" → "777001"
+                    .replace(" 777", "777") // " 777001" → "777001"
             })
             .collect();
 
@@ -664,15 +664,15 @@ mod tests {
         }
 
         let provider = GoogleTranslateProvider::from_env().unwrap();
-        let text = "_ID1_ sent _ID2_ message";
+        let text = "777001 sent 777002 message";
         let result = provider.translate(text, "en", "fr").await.unwrap();
 
         println!("Original: {}", text);
         println!("Translated: {}", result);
 
         // Anchor tokens should be preserved
-        assert!(result.contains("_ID1_"));
-        assert!(result.contains("_ID2_"));
+        assert!(result.contains("777001"));
+        assert!(result.contains("777002"));
     }
 
     #[tokio::test]
@@ -685,8 +685,8 @@ mod tests {
 
         let provider = GoogleTranslateProvider::from_env().unwrap();
         let variants = vec![
-            "_ID1_ sent a message".to_string(),
-            "_ID1_ sent _ID2_ messages".to_string(),
+            "777001 sent a message".to_string(),
+            "777001 sent 777002 messages".to_string(),
         ];
 
         let results = provider
@@ -703,11 +703,11 @@ mod tests {
         for result in &results {
             assert!(!result.is_empty());
             // Anchor tokens should be preserved
-            assert!(result.contains("_ID1_"));
+            assert!(result.contains("777001"));
         }
 
-        // Second variant should have _ID2_ preserved
-        assert!(results[1].contains("_ID2_"));
+        // Second variant should have 777002 preserved
+        assert!(results[1].contains("777002"));
     }
 
     #[tokio::test]

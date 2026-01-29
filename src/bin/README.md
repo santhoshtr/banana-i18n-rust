@@ -63,7 +63,7 @@ cargo run --bin banana-mt -- "Hello, $1!" fr
 
 ## Supported Features
 
-- **Placeholders**: `$1`, `$2`, etc. are preserved during translation
+- **Placeholders**: `$1`, `$2`, etc. are protected using anchor tokens (777001, 777002) during translation
 - **PLURAL Magic Word**: `{{PLURAL:$1|form1|form2|...}}` with proper plural forms per language
 - **GENDER Magic Word**: `{{GENDER:$1|male|female|neutral}}` for gendered languages
 - **Wiki Links**: `[[Page]]` and `[[Page|text]]` syntax support

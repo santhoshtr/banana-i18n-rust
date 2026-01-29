@@ -105,8 +105,8 @@ mod tests {
         // Verify anchor preservation
         for variant in &context.variants {
             assert!(
-                variant.translated_text.contains("_ID1_"),
-                "Anchor token _ID1_ should be preserved in: {}",
+                variant.translated_text.contains("777001"),
+                "Anchor token 777001 should be preserved in: {}",
                 variant.translated_text
             );
         }

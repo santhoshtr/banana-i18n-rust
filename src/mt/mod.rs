@@ -61,7 +61,7 @@
 //!
 //! - **Consistency Checking**: Detects MT hallucinations using similarity thresholds
 //! - **Word Boundary Snapping**: Ensures clean wikitext reconstruction
-//! - **Anchor Token Protection**: Prevents MT corruption of placeholders ($1 → _ID1_)
+//! - **Anchor Token Protection**: Prevents MT corruption of placeholders ($1 → 777001)
 //! - **Block Translation**: Translates related variants together for consistency
 //! - **ICU Plural Support**: Handles complex plural rules for 50+ languages
 

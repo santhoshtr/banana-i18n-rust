@@ -10,7 +10,7 @@
 //! 1. **Collect Choices** - Find all PLURAL/GENDER magic words and their option counts
 //! 2. **Cartesian Product** - Generate all state combinations using itertools-style product
 //! 3. **Resolve Variants** - Convert each state to a plain text variant with anchor tokens
-//! 4. **Anchor Protection** - Replace $1, $2 with _ID1_, _ID2_ to protect from MT corruption
+//! 4. **Anchor Protection** - Replace $1, $2 with 777001, 777002 to protect from MT corruption
 //!
 //! # Example
 //!
@@ -18,12 +18,12 @@
 //! // Input: "{{GENDER:$1|He|She}} sent {{PLURAL:$2|a message|$2 messages}}"
 //! // Output: 6 variants (3 GENDER × 2 PLURAL)
 //! // [
-//! //   "_ID1_ sent a message",      // He, singular  
-//! //   "_ID1_ sent _ID2_ messages", // He, plural
-//! //   "_ID1_ sent a message",      // She, singular
-//! //   "_ID1_ sent _ID2_ messages", // She, plural
-//! //   "_ID1_ sent a message",      // They, singular
-//! //   "_ID1_ sent _ID2_ messages"  // They, plural
+//! //   "777001 sent a message",      // He, singular  
+//! //   "777001 sent 777002 messages", // He, plural
+//! //   "777001 sent a message",      // She, singular
+//! //   "777001 sent 777002 messages", // She, plural
+//! //   "777001 sent a message",      // They, singular
+//! //   "777001 sent 777002 messages"  // They, plural
 //! // ]
 //! ```
 
@@ -255,8 +255,8 @@ fn resolve_ast_with_anchors(ast: &AstNodeList, state: &HashMap<String, usize>) -
                 result.push_str(text);
             }
             AstNode::Placeholder(placeholder) => {
-                // Replace $1, $2, etc. with anchor tokens _ID1_, _ID2_
-                result.push_str(&format!("_ID{}_", placeholder.index));
+                // Replace $1, $2, etc. with anchor tokens 777001, 777002 (777000 + index)
+                result.push_str(&format!("{}", 777000 + placeholder.index));
             }
             AstNode::Transclusion(trans) => {
                 let name_upper = trans.name.to_uppercase();
@@ -306,7 +306,7 @@ fn resolve_ast_with_anchors(ast: &AstNodeList, state: &HashMap<String, usize>) -
 fn replace_placeholders_with_anchors(text: &str) -> MtResult<String> {
     use regex::Regex;
 
-    // Replace $1, $2, etc. with _ID1_, _ID2_, etc.
+    // Replace $1, $2, etc. with 777001, 777002, etc. (777000 + index)
     // Sort by index in descending order to handle $10 before $1 (avoid conflicts)
     let re = Regex::new(r"\$(\d+)").unwrap();
 
@@ -323,7 +323,7 @@ fn replace_placeholders_with_anchors(text: &str) -> MtResult<String> {
 
     let mut result = text.to_string();
     for (start, end, num) in matches {
-        let anchor = format!("_ID{}_", num);
+        let anchor = format!("{}", 777000 + num);
         result.replace_range(start..end, &anchor);
     }
 
@@ -441,7 +441,7 @@ mod tests {
         let ast = parse("Hello, $1!");
         let variants = expand_to_variants(&ast, "en").unwrap();
         assert_eq!(variants.len(), 1);
-        assert!(variants[0].source_text.contains("_ID1_"));
+        assert!(variants[0].source_text.contains("777001"));
     }
 
     #[test]
@@ -459,7 +459,7 @@ mod tests {
 
         assert_eq!(context.original_key, "test-message");
         assert_eq!(context.variant_count(), 1);
-        assert!(context.variants[0].source_text.contains("_ID1_"));
+        assert!(context.variants[0].source_text.contains("777001"));
     }
 
     // ========== Single Magic Word Tests ==========
@@ -490,18 +490,18 @@ mod tests {
         assert_eq!(variants.len(), 6);
 
         // Check that variants have anchor tokens where expected
-        // Note: $1 is only used as GENDER control parameter, so no _ID1_ expected
-        // $2 appears in the plural form "$2 messages", so _ID2_ should appear
+        // Note: $1 is only used as GENDER control parameter, so no 777001 expected
+        // $2 appears in the plural form "$2 messages", so 777002 should appear
 
-        // Variants with singular form should not have _ID2_
+        // Variants with singular form should not have 777002
         assert!(variants[0].source_text == "He sent a message");
         assert!(variants[2].source_text == "She sent a message");
         assert!(variants[4].source_text == "They sent a message");
 
-        // Variants with plural form should have _ID2_ from "$2 messages"
-        assert!(variants[1].source_text.contains("_ID2_"));
-        assert!(variants[3].source_text.contains("_ID2_"));
-        assert!(variants[5].source_text.contains("_ID2_"));
+        // Variants with plural form should have 777002 from "$2 messages"
+        assert!(variants[1].source_text.contains("777002"));
+        assert!(variants[3].source_text.contains("777002"));
+        assert!(variants[5].source_text.contains("777002"));
     }
 
     #[test]
@@ -575,7 +575,7 @@ mod tests {
     fn test_placeholder_replacement_with_anchors() {
         let text = "$1 sent $2 to $3";
         let result = replace_placeholders_with_anchors(text).unwrap();
-        assert_eq!(result, "_ID1_ sent _ID2_ to _ID3_");
+        assert_eq!(result, "777001 sent 777002 to 777003");
     }
 
     #[test]
@@ -583,9 +583,9 @@ mod tests {
         // Test that $10 is replaced before $1 to avoid conflicts
         let text = "$1 and $10 are different";
         let result = replace_placeholders_with_anchors(text).unwrap();
-        assert!(result.contains("_ID1_"));
-        assert!(result.contains("_ID10_"));
-        assert!(!result.contains("_ID1_0"));
+        assert!(result.contains("777001"));
+        assert!(result.contains("777010"));
+        assert!(!result.contains("7770010"));
     }
 
     #[test]
@@ -657,14 +657,14 @@ mod tests {
 
         for variant in &variants {
             assert!(variant.source_text.contains("article"));
-            // Note: $1 is used as GENDER control, no _ID1_ expected
-            // Only _ID2_ appears in plural forms
+            // Note: $1 is used as GENDER control, no 777001 expected
+            // Only 777002 appears in plural forms
         }
 
-        // Check that plural variants have _ID2_
-        assert!(variants[1].source_text.contains("_ID2_"));
-        assert!(variants[3].source_text.contains("_ID2_"));
-        assert!(variants[5].source_text.contains("_ID2_"));
+        // Check that plural variants have 777002
+        assert!(variants[1].source_text.contains("777002"));
+        assert!(variants[3].source_text.contains("777002"));
+        assert!(variants[5].source_text.contains("777002"));
     }
 
     #[test]

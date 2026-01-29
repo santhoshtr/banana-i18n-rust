@@ -111,7 +111,7 @@ Output Suggestion (with confidence score & warnings)
 ### Anchor Tokens (Iteration 1) ✅
 Instead of directly translating `"$1 sent $2"`, we use:
 ```
-"_ID1_ sent _ID2_"
+"777001 sent 777002"
 ```
 This prevents MT from translating "1" into "un" or "ek" in French/Hindi.
 
@@ -119,7 +119,7 @@ This prevents MT from translating "1" into "un" or "ek" in French/Hindi.
 Generates language-specific plural forms:
 ```
 English: {{PLURAL:$1|is|are}}
-  → ["There is _ID1_ item", "There are _ID1_ items"]
+  → ["There is 777001 item", "There are 777001 items"]
 
 Russian: {{PLURAL:$1|предмет|предмета|предметов}}
   → [variant1, variant2, variant3] (3 forms)
@@ -129,7 +129,7 @@ Russian: {{PLURAL:$1|предмет|предмета|предметов}}
 Generates 3 gender variants:
 ```
 {{GENDER:$1|He|She|They}} sent a message
-  → ["He sent _ID2_ message", "She sent _ID2_ message", "They sent _ID2_ message"]
+  → ["He sent 777002 message", "She sent 777002 message", "They sent 777002 message"]
 ```
 
 ### Cartesian Expansion (Iteration 4 - Pending)
@@ -144,7 +144,7 @@ Will generate 3 × 2 = 6 variants covering all combinations.
 ### Anchor Tokens
 Instead of directly translating `"$1 sent $2"`, we use:
 ```
-"_ID1_ sent _ID2_"
+"777001 sent 777002"
 ```
 This prevents MT from translating "1" into "un" or "ek" in French/Hindi.
 

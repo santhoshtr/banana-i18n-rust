@@ -23,15 +23,15 @@ The MT module consists of 5 core components:
 **Tasks Completed**:
 - [x] Create `AnchorToken` struct: `{ placeholder_index: usize, token: String }`
 - [x] Implement anchor token generator: `generate_anchor_tokens(count) -> Vec<String>`
-  - Format: `_ID1_`, `_ID2_`, etc. (non-translatable format)
+  - Format: `777001`, `777002`, etc. (non-translatable format)
 - [x] Implement `replace_placeholders_with_anchors()` function
   - Replaces $1, $2, etc. with anchor tokens in text
 - [x] Placeholder recovery implemented in Iteration 8 (`recover_placeholders()`)
 
 **Tests Completed**:
 - [x] Test anchor token generation (10 tokens, verify uniqueness)
-- [x] Test single placeholder replacement: `"Hello, $1"` → `"Hello, _ID1_"`
-- [x] Test multiple placeholders: `"$1 sent $2"` → `"_ID1_ sent _ID2_"`
+- [x] Test single placeholder replacement: `"Hello, $1"` → `"Hello, 777001"`
+- [x] Test multiple placeholders: `"$1 sent $2"` → `"777001 sent 777002"`
 - [x] Test recovery with placeholder reordering
 - [x] Test edge cases (empty strings, numeric values, etc.)
 
@@ -298,7 +298,7 @@ cargo test --lib google_translate -- --ignored --nocapture
   - Detects significant reordering patterns
 - [x] Implement `recover_placeholders()` - Replaces anchors with $N in new positions
   - Maps anchors to original placeholder indices
-  - Handles reordering: anchor `_ID2_` at pos 5 → `$2` at pos 5 in output
+  - Handles reordering: anchor `777002` at pos 5 → `$2` at pos 5 in output
 - [x] Implement `validate_recovery()` - Post-recovery validation
   - Ensures all expected anchors were found and recovered
   - Reports missing anchors with clear error messages
@@ -406,9 +406,9 @@ cargo test --lib google_translate -- --ignored --nocapture
 **Planned Tests**:
 - [ ] Consistency check: MT translates "apple" as "pomme" and "pomme" inconsistently
   - Should detect and warn
-- [ ] Anchor preservation: all 4 variants have `_ID1_` and `_ID2_`
+- [ ] Anchor preservation: all 4 variants have `777001` and `777002`
   - Should pass
-- [ ] Missing anchor: one variant is missing `_ID2_`
+- [ ] Missing anchor: one variant is missing `777002`
   - Should fail with error
 - [ ] Scope stability: French articles match across variants
   - Should pass

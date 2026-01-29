@@ -67,7 +67,7 @@ impl Reassembler {
     ///    - Group variants by all other dimensions  
     ///    - Collapse the current axis using LCP/LCS + word boundary snapping
     ///    - Replace group with single "virtual" variant containing wikitext
-    /// 3. Restore placeholders (_ID1_ → $1)
+    /// 3. Restore placeholders (777001 → $1)
     /// ```
     pub fn reassemble(&self, variants: Vec<TranslationVariant>) -> MtResult<String> {
         if variants.is_empty() {
@@ -105,7 +105,7 @@ impl Reassembler {
             )));
         }
 
-        // 4. Restore placeholders (_ID1_ → $1) - Python line 217
+        // 4. Restore placeholders (777001 → $1) - Python line 217
         let final_text = &current_set[0].translated_text;
         Ok(self.restore_placeholders(final_text))
     }
@@ -270,10 +270,15 @@ impl Reassembler {
         ))
     }
 
-    /// Restore placeholders: _ID1_ → $1 (Python lines 329-334)
+    /// Restore placeholders: 777001 → $1 (Python lines 329-334)
     fn restore_placeholders(&self, text: &str) -> String {
-        let re = Regex::new(r"_ID(\d+)_").unwrap();
-        re.replace_all(text, "$$$1").to_string()
+        let re = Regex::new(r"777(\d+)").unwrap();
+        re.replace_all(text, |caps: &regex::Captures| {
+            let num_str = &caps[1]; // Get digits after 777
+            let num: usize = num_str.parse().unwrap(); // Convert "001" to 1
+            format!("${}", num)
+        })
+        .to_string()
     }
 }
 
@@ -591,7 +596,7 @@ mod tests {
     fn test_restore_placeholders() {
         let reassembler = Reassembler::new(HashMap::new());
 
-        let text = "_ID1_ sent _ID2_ messages to _ID3_";
+        let text = "777001 sent 777002 messages to 777003";
         let result = reassembler.restore_placeholders(text);
         assert_eq!(result, "$1 sent $2 messages to $3");
     }
@@ -609,9 +614,9 @@ mod tests {
     fn test_restore_placeholders_mixed() {
         let reassembler = Reassembler::new(HashMap::new());
 
-        let text = "_ID1_ and normal _ID text and _ID2_";
+        let text = "777001 and normal 777 text and 777002";
         let result = reassembler.restore_placeholders(text);
-        assert_eq!(result, "$1 and normal _ID text and $2");
+        assert_eq!(result, "$1 and normal 777 text and $2");
     }
 
     // ========== Simple Reassembly Tests ==========
@@ -620,7 +625,7 @@ mod tests {
     fn test_reassemble_single_variant() {
         let reassembler = Reassembler::new(HashMap::new());
 
-        let variants = vec![create_variant(&[], "Hello _ID1_!")];
+        let variants = vec![create_variant(&[], "Hello 777001!")];
 
         let result = reassembler.reassemble(variants).unwrap();
         assert_eq!(result, "Hello $1!");

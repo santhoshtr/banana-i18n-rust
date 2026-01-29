@@ -27,7 +27,7 @@ Using your Tree-sitter AST, you identify every "Choice Node" (`PLURAL`, `GENDER`
     *   For `PLURAL`: Choose a representative number for each category (e.g., 1 for "one", 2 for "two", 5 for "other").
     *   For `GENDER`: Map to "male", "female", and "unknown".
 3.  **Produce Variants:** Generate the full set of plain-text strings.
-    *   *Crucial Tip:* Use "Anchor Tokens" for placeholders. Instead of `$1`, use a unique, non-translatable string like `_ID1_` or `777001`. This prevents the MT from translating "1" into "un" or "ek".
+    *   *Crucial Tip:* Use "Anchor Tokens" for placeholders. Instead of `$1`, use a unique, non-translatable string like `777001` or `777002`. This prevents the MT from translating "1" into "un" or "ek".
 
 #### Step B: The Translation Phase
 Send the batch of expanded strings to the MT.

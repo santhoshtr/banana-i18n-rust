@@ -21,8 +21,8 @@ use std::collections::HashMap;
 ///         "$1": 0,  // First choice (He)
 ///         "$2": 1   // Second choice ($2 messages)
 ///     },
-///     source_text: "_ID1_ sent _ID2_ messages",
-///     translated_text: "_ID1_ a envoyé _ID2_ messages"
+///     source_text: "777001 sent 777002 messages",
+///     translated_text: "777001 a envoyé 777002 messages"
 /// }
 /// ```
 #[derive(Debug, Clone, PartialEq)]
@@ -31,7 +31,7 @@ pub struct TranslationVariant {
     /// Example: {"$1": 0, "$2": 1} means first choice for $1, second choice for $2
     pub state: HashMap<String, usize>,
 
-    /// The source string with anchors (e.g., "_ID1_ sent a message.")
+    /// The source string with anchors (e.g., "777001 sent a message.")
     /// Anchors protect placeholders from being translated by MT systems
     pub source_text: String,
 
@@ -187,10 +187,10 @@ mod tests {
         state.insert("$1".to_string(), 0);
         state.insert("$2".to_string(), 1);
 
-        let variant = TranslationVariant::new(state.clone(), "Hello _ID1_!".to_string());
+        let variant = TranslationVariant::new(state.clone(), "Hello 777001!".to_string());
 
         assert_eq!(variant.state, state);
-        assert_eq!(variant.source_text, "Hello _ID1_!");
+        assert_eq!(variant.source_text, "Hello 777001!");
         assert_eq!(variant.translated_text, "");
         assert!(!variant.is_translated());
     }
@@ -202,13 +202,13 @@ mod tests {
 
         let variant = TranslationVariant::with_translation(
             state.clone(),
-            "Hello _ID1_!".to_string(),
-            "Bonjour _ID1_!".to_string(),
+            "Hello 777001!".to_string(),
+            "Bonjour 777001!".to_string(),
         );
 
         assert_eq!(variant.state, state);
-        assert_eq!(variant.source_text, "Hello _ID1_!");
-        assert_eq!(variant.translated_text, "Bonjour _ID1_!");
+        assert_eq!(variant.source_text, "Hello 777001!");
+        assert_eq!(variant.translated_text, "Bonjour 777001!");
         assert!(variant.is_translated());
     }
 

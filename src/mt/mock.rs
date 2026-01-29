@@ -186,12 +186,12 @@ mod tests {
     #[tokio::test]
     async fn test_suffix_preserves_anchor_tokens() {
         let mock = MockTranslator::new(MockMode::Suffix);
-        let text = "_ID1_ sent _ID2_ message";
+        let text = "777001 sent 777002 message";
         let result = mock.translate(text, "en", "fr").await.unwrap();
-        assert_eq!(result, "_ID1_ sent _ID2_ message_fr");
+        assert_eq!(result, "777001 sent 777002 message_fr");
         // Verify anchor tokens are still intact
-        assert!(result.contains("_ID1_"));
-        assert!(result.contains("_ID2_"));
+        assert!(result.contains("777001"));
+        assert!(result.contains("777002"));
     }
 
     #[tokio::test]
@@ -282,11 +282,11 @@ mod tests {
     #[tokio::test]
     async fn test_reorder_preserves_anchor_tokens() {
         let mock = MockTranslator::new(MockMode::Reorder);
-        let text = "_ID1_ sent _ID2_";
+        let text = "777001 sent 777002";
         let result = mock.translate(text, "en", "ja").await.unwrap();
-        assert_eq!(result, "_ID2_ sent _ID1_");
-        assert!(result.contains("_ID1_"));
-        assert!(result.contains("_ID2_"));
+        assert_eq!(result, "777002 sent 777001");
+        assert!(result.contains("777001"));
+        assert!(result.contains("777002"));
     }
 
     // ========== Error Mode Tests ==========
