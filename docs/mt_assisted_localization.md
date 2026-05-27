@@ -594,13 +594,29 @@ The Python reference has the same bug verbatim.
 
 ### 9.5 Anchor mangling cleanup is incomplete
 
-Only `"777 "` → `"777"` and `" 777"` → `"777"` are repaired. Real MT
-behaviour we've already seen but don't fix:
+The cleanup (`clean_anchor_mangling` in `google_translate.rs`) repairs
+exactly one mangling: whitespace MT inserts *inside* the anchor digits,
+`"777 001"` → `"777001"`. Spaces *adjacent* to a complete anchor are
+deliberately preserved — a space before the anchor is a word separator,
+not mangling.
+
+> **Fixed (was a bug).** An earlier `" 777"` → `"777"` replace stripped
+> the space *before* the anchor. Translating
+> `The following {{PLURAL:$1|file is|$1 files are}} …` to Hindi gave
+> `निम्नलिखित 777001 फ़ाइलें …` from MT, which that replace turned into
+> `निम्नलिखित777001 …`, recovered as `निम्नलिखित$1 …` (placeholder glued
+> to the preceding word). It also broke prefix extraction: the lost
+> trailing space shortened the LCP so word-boundary snapping (§6.4)
+> dropped the shared `निम्नलिखित ` prefix and duplicated the whole
+> sentence into both PLURAL branches. Removing the replace fixes both.
+> Regression test: `test_clean_anchor_preserves_space_before_anchor`.
+
+Real MT behaviour still **not** handled:
 
 - **Numeral system conversion**: Hindi MT may turn `777002` into
   `७७७००२` (Devanagari digits); Arabic MT may emit `٧٧٧٠٠٢`.
-- **Period insertion**: some engines render `"777,002"` or
-  `"777.002"` thinking it's a large number.
+- **Digit grouping**: some engines render `"777,002"` or `"777.002"`
+  (and Indian grouping `"7,77,002"`) thinking it's a large number.
 - **Bidirectional marks**: RTL languages may bracket the digits with
   `U+200E` / `U+200F`.
 

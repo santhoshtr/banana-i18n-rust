@@ -298,18 +298,23 @@ impl GoogleTranslateProvider {
         }
 
         // 5. Clean up anchor token mangling (Python lines 177-180)
-        // Sometimes MT systems add spaces: "777 001" instead of "777001"
-        let cleaned: Vec<String> = lines
-            .iter()
-            .map(|line| {
-                // Fix common anchor mangling patterns
-                line.replace("777 ", "777") // "777 001" → "777001"
-                    .replace(" 777", "777") // " 777001" → "777001"
-            })
-            .collect();
+        let cleaned: Vec<String> = lines.iter().map(|line| clean_anchor_mangling(line)).collect();
 
         Ok(cleaned)
     }
+}
+
+/// Undo the one anchor-token mangling we can safely repair: whitespace MT
+/// inserted *inside* the anchor digits, e.g. `"777 001"` → `"777001"`.
+///
+/// Spaces *around* a complete anchor are deliberately left alone — a space
+/// before the anchor is a word separator (e.g. Hindi `"निम्नलिखित 777001 फ़ाइलें"`,
+/// "the following $1 files"); stripping it would glue the placeholder to the
+/// preceding word and yield `"निम्नलिखित$1"`. This matches the Python
+/// reference, which only repairs the internal split. See
+/// docs/mt_assisted_localization.md §9.5.
+fn clean_anchor_mangling(line: &str) -> String {
+    line.replace("777 ", "777")
 }
 
 impl std::fmt::Debug for GoogleTranslateProvider {
@@ -560,6 +565,33 @@ mod tests {
         // API key should be masked
         assert!(debug_str.contains("***"));
         assert!(!debug_str.contains("test-key"));
+    }
+
+    // ========== Anchor Cleanup Tests ==========
+
+    #[test]
+    fn test_clean_anchor_preserves_space_before_anchor() {
+        // Regression for the reported bug: the space between निम्नलिखित
+        // ("following") and the anchor 777001 ($1) must be preserved.
+        // Previously `.replace(" 777", "777")` glued them into निम्नलिखित777001.
+        let input = "निम्नलिखित 777001 फ़ाइलें वर्तमान श्रेणी में हैं।";
+        assert_eq!(clean_anchor_mangling(input), input);
+    }
+
+    #[test]
+    fn test_clean_anchor_rejoins_split_anchor() {
+        // The one mangling we DO repair: a space MT inserted inside the digits.
+        assert_eq!(clean_anchor_mangling("The following 777 001 files"), "The following 777001 files");
+    }
+
+    #[test]
+    fn test_clean_anchor_intact_unchanged() {
+        assert_eq!(clean_anchor_mangling("777001 फ़ाइलें"), "777001 फ़ाइलें");
+    }
+
+    #[test]
+    fn test_clean_anchor_ascii_unchanged() {
+        assert_eq!(clean_anchor_mangling("He sent 777001 messages"), "He sent 777001 messages");
     }
 
     // ========== Block Translation Tests ==========
