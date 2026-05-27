@@ -326,6 +326,19 @@
     padding-block: var(--font-size-x-small);
   }
 
+  .source-link {
+    flex: 0 0 auto;
+    color: var(--color-subtle);
+    text-decoration: none;
+    white-space: nowrap;
+    font-size: var(--font-size-small);
+  }
+
+  .source-link:hover {
+    color: var(--color-progressive);
+    text-decoration: underline;
+  }
+
   /* Main Content */
   main {
     padding-block: var(--font-size-x-large);
