@@ -8,7 +8,7 @@ This module implements machine translation suggestions for MediaWiki i18n messag
 
  **Smart Expansion** - Generates all combinations of PLURAL/GENDER forms
 **Placeholder Protection** - Uses anchor tokens to prevent corruption during translation
-**MT Provider Agnostic** - Generic trait system with Google Translate implementation
+**MT Provider Agnostic** - Generic trait system with MinT (default, no API key) and Google Translate implementations
 **Advanced Reassembly** - Reconstructs wikitext with grammatical agreement handling
 **Consistency Checking** - Validates translations for hallucinations and anomalies
 **CLI Tool** - Command-line interface for translator workflows

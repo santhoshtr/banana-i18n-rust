@@ -37,6 +37,7 @@ pub mod data;
 pub mod error;
 pub mod expansion;
 pub mod google_translate;
+pub mod mint;
 pub mod mock;
 pub mod reassembly;
 pub mod translator;
@@ -53,6 +54,7 @@ pub use expansion::{
     prepare_for_translation,
 };
 pub use google_translate::GoogleTranslateProvider;
+pub use mint::MintProvider;
 pub use mock::{MockMode, MockTranslator};
 pub use reassembly::{Reassembler, get_similarity, reassemble_from_context};
 pub use translator::MachineTranslator;

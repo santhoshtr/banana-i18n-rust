@@ -109,6 +109,91 @@ pub trait MachineTranslator: Send + Sync {
     ///
     /// A string identifying the provider (e.g., "Google Translate", "Mock Translator")
     fn provider_name(&self) -> &str;
+
+    /// Translate multiple variants as a single numbered block.
+    ///
+    /// Joins all variants with numbered prefixes (`1. ...`, `2. ...`) and
+    /// translates them in **one** `translate` call, so the MT engine sees the
+    /// related variants together and keeps wording consistent across them
+    /// (important for PLURAL/GENDER forms). The block is then split back into
+    /// individual translations.
+    ///
+    /// This default implementation is provider-agnostic — it relies only on
+    /// [`translate`](Self::translate). Providers may override it if they need
+    /// different behaviour.
+    ///
+    /// # Guarantees
+    ///
+    /// - Output order matches input order
+    /// - Output length equals input length
+    async fn translate_as_block(
+        &self,
+        variants: &[String],
+        source_locale: &str,
+        target_locale: &str,
+    ) -> MtResult<Vec<String>> {
+        // Handle empty case
+        if variants.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Handle single variant case — no numbering needed
+        if variants.len() == 1 {
+            let result = self
+                .translate(&variants[0], source_locale, target_locale)
+                .await?;
+            return Ok(vec![result]);
+        }
+
+        // 1. Join with numbered prefixes
+        let input_block: String = variants
+            .iter()
+            .enumerate()
+            .map(|(i, variant)| format!("{}. {}", i + 1, variant))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // 2. Translate the entire block in a single call
+        let translated_block = self
+            .translate(&input_block, source_locale, target_locale)
+            .await?;
+
+        // 3. Split back using the numbered prefixes
+        use regex::Regex;
+        let re = Regex::new(r"\n?\d+\.\s").unwrap();
+        let lines: Vec<String> = re
+            .split(translated_block.trim())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        // 4. Safety check: same count
+        if lines.len() != variants.len() {
+            return Err(crate::error::MtError::TranslationError(format!(
+                "Block translation count mismatch: expected {}, got {}. Block: '{}'",
+                variants.len(),
+                lines.len(),
+                translated_block
+            )));
+        }
+
+        // 5. Clean up anchor token mangling
+        let cleaned: Vec<String> = lines.iter().map(|line| clean_anchor_mangling(line)).collect();
+
+        Ok(cleaned)
+    }
+}
+
+/// Undo the one anchor-token mangling we can safely repair: whitespace MT
+/// inserted *inside* the anchor digits, e.g. `"777 001"` → `"777001"`.
+///
+/// Spaces *around* a complete anchor are deliberately left alone — a space
+/// before the anchor is a word separator (e.g. Hindi `"निम्नलिखित 777001 फ़ाइलें"`,
+/// "the following $1 files"); stripping it would glue the placeholder to the
+/// preceding word and yield `"निम्नलिखित$1"`. See
+/// docs/mt_assisted_localization.md §9.5.
+pub(crate) fn clean_anchor_mangling(line: &str) -> String {
+    line.replace("777 ", "777")
 }
 
 /// Normalize a locale code by stripping region information
@@ -243,5 +328,38 @@ mod tests {
             }
             _ => panic!("Expected InvalidLocale error"),
         }
+    }
+
+    // ========== Anchor Cleanup Tests ==========
+
+    #[test]
+    fn test_clean_anchor_preserves_space_before_anchor() {
+        // Regression for the reported bug: the space between निम्नलिखित
+        // ("following") and the anchor 777001 ($1) must be preserved.
+        // Previously `.replace(" 777", "777")` glued them into निम्नलिखित777001.
+        let input = "निम्नलिखित 777001 फ़ाइलें वर्तमान श्रेणी में हैं।";
+        assert_eq!(clean_anchor_mangling(input), input);
+    }
+
+    #[test]
+    fn test_clean_anchor_rejoins_split_anchor() {
+        // The one mangling we DO repair: a space MT inserted inside the digits.
+        assert_eq!(
+            clean_anchor_mangling("The following 777 001 files"),
+            "The following 777001 files"
+        );
+    }
+
+    #[test]
+    fn test_clean_anchor_intact_unchanged() {
+        assert_eq!(clean_anchor_mangling("777001 फ़ाइलें"), "777001 फ़ाइलें");
+    }
+
+    #[test]
+    fn test_clean_anchor_ascii_unchanged() {
+        assert_eq!(
+            clean_anchor_mangling("He sent 777001 messages"),
+            "He sent 777001 messages"
+        );
     }
 }

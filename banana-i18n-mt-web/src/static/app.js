@@ -3,11 +3,13 @@ let sourceMessages = {};
 let translations = {};
 let savedTranslations = {}; // Tracks which messages have been explicitly saved
 let currentTargetLang = "es";
+let currentBackend = "mint";
 let isLoaded = false;
 
 // DOM elements
 const fileInput = document.getElementById("fileInput");
 const targetLangSelect = document.getElementById("targetLang");
+const backendSelect = document.getElementById("mtBackend");
 const exportBtn = document.getElementById("exportBtn");
 const messageList = document.getElementById("messageList");
 const emptyState = document.getElementById("emptyState");
@@ -20,6 +22,7 @@ const progressPercent = document.getElementById("progressPercent");
 // Event listeners
 fileInput.addEventListener("change", handleFileUpload);
 targetLangSelect.addEventListener("change", handleLanguageChange);
+backendSelect.addEventListener("change", handleBackendChange);
 exportBtn.addEventListener("click", exportTranslations);
 
 /**
@@ -74,7 +77,24 @@ async function handleFileUpload(event) {
 function handleLanguageChange(event) {
   currentTargetLang = event.target.value;
   showStatus(`🌍 Target language changed to ${currentTargetLang}`);
+  resetTranslationsUI();
+}
 
+/**
+ * Handle MT engine (backend) change
+ */
+function handleBackendChange(event) {
+  currentBackend = event.target.value;
+  showStatus(`🔌 MT engine changed to ${currentBackend}`);
+  resetTranslationsUI();
+}
+
+/**
+ * Clear all translations and reset the message UI to a pending state.
+ * Used when the target language or MT engine changes, since existing
+ * translations are no longer valid.
+ */
+function resetTranslationsUI() {
   // Reset all internal trackers for fresh translations
   translations = {};
   savedTranslations = {};
@@ -265,6 +285,7 @@ async function translateMessage(key) {
         message: sourceMessages[key],
         target_language: currentTargetLang,
         key: key,
+        backend: currentBackend,
       }),
     });
 
@@ -487,8 +508,39 @@ async function populateWikiDropdown() {
     console.log("📋 Using fallback wiki list");
   }
 }
+/**
+ * Populate the MT engine dropdown from the backends advertised by the server.
+ */
+async function populateBackendDropdown() {
+  try {
+    const response = await fetch("/api/backends");
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    backendSelect.innerHTML = "";
+
+    data.backends.forEach((backend) => {
+      const option = document.createElement("option");
+      option.value = backend.id;
+      option.textContent = backend.name;
+      backendSelect.appendChild(option);
+    });
+
+    // Default to the server's preferred backend (MinT) when available.
+    currentBackend = data.default || data.backends[0]?.id || currentBackend;
+    backendSelect.value = currentBackend;
+
+    console.log(`Loaded ${data.backends.length} MT backends (default: ${currentBackend})`);
+  } catch (error) {
+    console.error("Failed to load MT backends:", error);
+  }
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   // Initialize
   showStatus("👋 Ready to upload an i18n JSON file");
   await populateWikiDropdown();
+  await populateBackendDropdown();
 });

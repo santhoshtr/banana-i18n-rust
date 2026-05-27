@@ -1,10 +1,11 @@
 use banana_i18n::parser::Parser;
 use banana_i18n_mt::{
-    GoogleTranslateProvider, MachineTranslator, MockMode, MockTranslator, Reassembler,
-    prepare_for_translation,
+    GoogleTranslateProvider, MachineTranslator, MintProvider, MockMode, MockTranslator,
+    Reassembler, prepare_for_translation,
 };
 use clap::{Arg, Command};
 use std::env;
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -31,11 +32,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .default_value("en"),
         )
         .arg(
-            Arg::new("mock")
-                .long("mock")
-                .short('m')
-                .help("Use mock translator instead of Google Translate")
-                .action(clap::ArgAction::SetTrue),
+            Arg::new("backend")
+                .long("backend")
+                .short('b')
+                .help("Translation backend: mint (default), google, or mock")
+                .value_parser(["mint", "google", "mock"])
+                .default_value("mint"),
         )
         .arg(
             Arg::new("verbose")
@@ -55,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let source_message = matches.get_one::<String>("message").unwrap();
     let target_locale = matches.get_one::<String>("target-locale").unwrap();
     let source_locale = matches.get_one::<String>("source-locale").unwrap();
-    let use_mock = matches.get_flag("mock");
+    let backend = matches.get_one::<String>("backend").unwrap();
     let verbose = matches.get_flag("verbose");
     let message_key = matches
         .get_one::<String>("key")
@@ -105,22 +107,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 3. Translate
     let source_texts = context.source_texts();
-    let translated_texts = if use_mock {
-        let mock_translator = MockTranslator::new(MockMode::Suffix);
-        mock_translator
+    let translator: Arc<dyn MachineTranslator> = match backend.as_str() {
+        "mock" => Arc::new(MockTranslator::new(MockMode::Suffix)),
+        "google" => {
+            if env::var("GOOGLE_TRANSLATE_API_KEY").is_err() {
+                eprintln!("❌ GOOGLE_TRANSLATE_API_KEY environment variable not set");
+                eprintln!("   Set it with: export GOOGLE_TRANSLATE_API_KEY=your_api_key");
+                eprintln!("   Or use --backend mint (no API key required)");
+                return Err("Missing API key".into());
+            }
+            Arc::new(GoogleTranslateProvider::from_env()?)
+        }
+        // "mint" (default) and any future backends
+        _ => Arc::new(MintProvider::from_env()?),
+    };
+
+    if verbose {
+        println!("🔌 Backend: {}", translator.provider_name());
+    }
+
+    // Real MT engines translate the variants as one numbered block to keep
+    // wording consistent across PLURAL/GENDER forms. The mock translator is
+    // deterministic per-string, so a plain batch keeps its output predictable.
+    let translated_texts = if backend == "mock" {
+        translator
             .translate_batch(&source_texts, source_locale, target_locale)
             .await?
     } else {
-        // Check for API key
-        if env::var("GOOGLE_TRANSLATE_API_KEY").is_err() {
-            eprintln!("❌ GOOGLE_TRANSLATE_API_KEY environment variable not set");
-            eprintln!("   Set it with: export GOOGLE_TRANSLATE_API_KEY=your_api_key");
-            eprintln!("   Or use --mock to use mock translator");
-            return Err("Missing API key".into());
-        }
-
-        let provider = GoogleTranslateProvider::from_env()?;
-        provider
+        translator
             .translate_as_block(&source_texts, source_locale, target_locale)
             .await?
     };
