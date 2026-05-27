@@ -486,4 +486,66 @@ mod tests {
         println!("  - Final message: {} chars", result.len());
         println!("{}", "=".repeat(80));
     }
+
+    // ============================================================================
+    // TEST 7: Anchor recovery survives engine reformatting (live)
+    // ============================================================================
+
+    /// Run the full pipeline and return the reassembled wikitext, or `None` if
+    /// the live service returned a transient error (so the test can skip).
+    async fn pipeline_via<T: MachineTranslator>(
+        provider: &T,
+        source: &str,
+        target: &str,
+    ) -> Option<String> {
+        let mut parser = Parser::new(source);
+        let ast = parser.parse();
+        let mut context = prepare_for_translation(&ast, "en", "anchor-test").ok()?;
+        let translated = match provider
+            .translate_as_block(&context.source_texts(), "en", target)
+            .await
+        {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("⚠️  Skipping: transient MT error: {}", e);
+                return None;
+            }
+        };
+        context.update_translations(translated);
+        let reassembler = Reassembler::new(context.variable_types.clone());
+        reassembler.reassemble(context.variants).ok()
+    }
+
+    #[tokio::test]
+    #[ignore] // Run with: cargo test --ignored  (hits the live MinT service, no key)
+    async fn test_e2e_anchor_recovery_mint_french() {
+        // French is where MinT inserts a space inside the anchor ("77 7002").
+        let provider = MintProvider::new().expect("MinT provider");
+        let source = "You have {{PLURAL:$1|one message|$1 messages}}";
+        let Some(result) = pipeline_via(&provider, source, "fr").await else {
+            return;
+        };
+        println!("MinT fr → {}", result);
+        assert!(result.contains("$1"), "placeholder should be recovered: {}", result);
+        assert!(!result.contains("777"), "no anchor residue should remain: {}", result);
+    }
+
+    #[tokio::test]
+    #[ignore] // Run with: cargo test --ignored  (needs GOOGLE_TRANSLATE_API_KEY)
+    async fn test_e2e_anchor_recovery_google_native_digits() {
+        if !require_api_key() {
+            eprintln!("⚠️  Skipping: GOOGLE_TRANSLATE_API_KEY not set");
+            return;
+        }
+        // Marathi (mr) makes Google convert the anchor digits to Devanagari.
+        let provider = GoogleTranslateProvider::from_env().expect("Google provider");
+        let source = "You have {{PLURAL:$1|one message|$1 messages}}";
+        let Some(result) = pipeline_via(&provider, source, "mr").await else {
+            return;
+        };
+        println!("Google mr → {}", result);
+        assert!(result.contains("$1"), "placeholder should be recovered: {}", result);
+        assert!(!result.contains("777"), "no ASCII anchor residue: {}", result);
+        assert!(!result.contains("७७७"), "no Devanagari anchor residue: {}", result);
+    }
 }

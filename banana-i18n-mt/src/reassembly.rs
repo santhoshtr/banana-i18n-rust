@@ -276,12 +276,23 @@ impl Reassembler {
         ))
     }
 
-    /// Restore placeholders: 777001 → $1
+    /// Restore placeholders: `777001` → `$1`.
+    ///
+    /// First de-mangles any anchors the MT engine reformatted (foreign numerals,
+    /// inserted separators, bidi marks) via [`normalize_anchors`], then recovers
+    /// the canonical ASCII `777NNN` anchors. The recovery is bounded by digits on
+    /// both sides so a real number such as `7770015` or `5777001` is left alone
+    /// (fixes docs §9.4).
     fn restore_placeholders(&self, text: &str) -> String {
-        let re = Regex::new(r"777(\d+)").unwrap();
-        re.replace_all(text, |caps: &regex::Captures| {
-            let num_str = &caps[1]; // Get digits after 777
-            let num: usize = num_str.parse().unwrap(); // Convert "001" to 1
+        let normalized = crate::translator::normalize_anchors(text);
+        let re = Regex::new(r"([0-9]?)777([0-9]{3})([0-9]*)").unwrap();
+        re.replace_all(&normalized, |caps: &regex::Captures| {
+            // A digit immediately before or after means this is part of a longer
+            // real number, not a 777NNN anchor — leave the whole match untouched.
+            if !caps[1].is_empty() || !caps[3].is_empty() {
+                return caps[0].to_string();
+            }
+            let num: usize = caps[2].parse().unwrap(); // "001" → 1
             format!("${}", num)
         })
         .to_string()
@@ -818,6 +829,48 @@ mod tests {
         let text = "777001 and normal 777 text and 777002";
         let result = reassembler.restore_placeholders(text);
         assert_eq!(result, "$1 and normal 777 text and $2");
+    }
+
+    #[test]
+    fn test_restore_placeholders_double_digit() {
+        let reassembler = Reassembler::new(HashMap::new());
+        assert_eq!(reassembler.restore_placeholders("777010 x"), "$10 x");
+    }
+
+    #[test]
+    fn test_restore_placeholders_ignores_longer_number() {
+        // §9.4: a real 7-digit number starting 777 must not be eaten.
+        let reassembler = Reassembler::new(HashMap::new());
+        assert_eq!(reassembler.restore_placeholders("id 7770015 here"), "id 7770015 here");
+    }
+
+    #[test]
+    fn test_restore_placeholders_ignores_short_777() {
+        // §9.4: "bus 7779" has too few trailing digits to be an anchor.
+        let reassembler = Reassembler::new(HashMap::new());
+        assert_eq!(reassembler.restore_placeholders("bus 7779 runs"), "bus 7779 runs");
+    }
+
+    #[test]
+    fn test_restore_placeholders_ignores_leading_digit() {
+        // A digit glued before the run means it is a real number, not an anchor.
+        let reassembler = Reassembler::new(HashMap::new());
+        assert_eq!(reassembler.restore_placeholders("5777001"), "5777001");
+    }
+
+    #[test]
+    fn test_restore_placeholders_demangles_then_recovers() {
+        // Anchors mangled by MT (separators / foreign numerals) are normalized
+        // before recovery, so they still round-trip to $N.
+        let reassembler = Reassembler::new(HashMap::new());
+        assert_eq!(
+            reassembler.restore_placeholders("Vous avez 777\u{00A0}002 messages"),
+            "Vous avez $2 messages"
+        );
+        assert_eq!(
+            reassembler.restore_placeholders("आपके पास ७७७००२ संदेश"),
+            "आपके पास $2 संदेश"
+        );
     }
 
     // ========== Simple Reassembly Tests ==========

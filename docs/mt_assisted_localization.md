@@ -131,11 +131,18 @@ Entry point: `prepare_for_translation(ast, locale, message_key)` →
 
 Why `777_000 + N`?
 
-- Numeric ⇒ MT systems leave it alone (treated like a year or product
-  code), unlike `$1` which is frequently dropped or translated as `1`.
+- Numeric ⇒ MT systems do not *delete* it (unlike `$1`, which is
+  frequently dropped or translated as `1`). They do, however, **reformat**
+  it — converting to native numeral systems, inserting digit-group
+  separators, etc. — so the token is *normalized* on the way back rather
+  than assumed pristine (see §5.2, §9.5). Non-digit sentinels (PUA
+  codepoints, bracket markers) were tried and rejected: MinT silently
+  drops them.
 - Prefix `777` is rare in real prose.
-- Range `777001 … 777999` covers every realistic placeholder count.
-- Round-trip is a single regex: `s/777(\d+)/\$\1/`.
+- Range `777001 … 777999` covers every realistic placeholder count and
+  keeps the anchor a fixed six digits, which the recovery relies on (§7).
+- Round-trip: `normalize_anchors` canonicalizes any reformatting, then a
+  digit-bounded `([0-9]?)777([0-9]{3})([0-9]*)` recovers `$N` (§7).
 
 Trade-offs and known cracks in this scheme are documented in §9.
 
@@ -214,8 +221,8 @@ restores placeholders.
 
 ## 5. Phase 2 — Block translation
 
-Source code: `banana-i18n-mt/src/google_translate.rs::translate_as_block`,
-plus the more general `MachineTranslator` trait in `translator.rs`.
+Source code: the `MachineTranslator::translate_as_block` default method in
+`banana-i18n-mt/src/translator.rs`, shared by every backend.
 
 ### 5.1 Why a block?
 
@@ -242,10 +249,15 @@ After translation, the response is split on the regex `\n?\d+\.\s`,
 empty fragments are dropped, and the count is checked against the
 input.
 
-Cleanup pass: replace `"777 "` with `"777"` and `" 777"` with `"777"`
-to fix MTs that insert a thin space inside long numbers. Other
-mangling (Devanagari digits, Arabic-Indic digits, line reordering) is
-*not* repaired — see §9.
+Cleanup pass: each split line is run through `normalize_anchors`
+(`translator.rs`), which de-mangles the anchor tokens the MT engine
+reformatted — folding foreign numeral systems back to ASCII
+(`٧٧٧٠٠٢` / `७७७००२` → `777002`), stripping separators inserted *inside*
+the number (ASCII/no-break spaces, the odd `"77 7002"` split, grouping
+commas), and removing bidi marks. It is **anchor-scoped**: only `777`-led
+six-digit runs are rewritten, so legitimate localized numerals and the
+word-separating space *before* an anchor are left untouched. Line
+reordering/merging is still not repaired — see §9.6.
 
 ### 5.3 Mismatched count
 
@@ -257,14 +269,17 @@ per-variant translation.
 
 The trait `MachineTranslator` (`translator.rs`) is the abstraction:
 
+- `MintProvider` — Wikimedia MinT (`translate.wmcloud.org/api/translate`),
+  no API key required; the **default** backend. Translates one string per
+  request (no batch array), so `translate_batch` iterates.
 - `GoogleTranslateProvider` — real Google Translate v2 API, batches
   capped at 128, per-text cap at 30 000 chars.
 - `MockTranslator` — used in tests; modes `Suffix`, `Mappings`,
   `Reorder`, `Error`, `NoOp`.
 
-`translate_as_block` is a method on `GoogleTranslateProvider`; the
-trait does not require it, so other providers reuse `translate_batch`
-unless they want their own block-translation strategy.
+`translate_as_block` is a **default method on the trait**, so every
+backend gets block translation — and the `normalize_anchors` cleanup
+(§5.2) — for free; a provider may override it for a different strategy.
 
 ---
 
@@ -443,15 +458,23 @@ such case.
 Source code: `Reassembler::restore_placeholders` in
 `banana-i18n-mt/src/reassembly.rs`.
 
-A single regex substitution:
+`restore_placeholders` first runs `normalize_anchors` (§5.2) as a safety
+net, then a single digit-bounded substitution:
 
 ```rust
-// 777(\d+)  →  $<int(\1)>
-re.replace_all(text, |caps| {
-    let n: usize = caps[1].parse().unwrap();
+// ([0-9]?)777([0-9]{3})([0-9]*)
+re.replace_all(&normalized, |caps| {
+    // A digit glued before (group 1) or after (group 3) means this is a
+    // real number, not a 777NNN anchor — leave the whole match untouched.
+    if !caps[1].is_empty() || !caps[3].is_empty() { return caps[0].into(); }
+    let n: usize = caps[2].parse().unwrap();
     format!("${}", n)
 })
 ```
+
+Anchors are always six ASCII digits (`777001..777999`) after expansion and
+normalization, so recovery is fixed at three trailing digits and bounded
+by digits on both sides.
 
 Examples:
 
@@ -460,9 +483,9 @@ Examples:
 | `777001`               | `$1`           |
 | `777010`               | `$10`          |
 | `un message`           | `un message`   |
-| `the year 777 BC`      | `the year 777 BC` (no digits after 777, no match) |
-
-The `\d+` is greedy: see §9 for the edge cases this opens up.
+| `the year 777 BC`      | `the year 777 BC` (fewer than 3 digits after 777) |
+| `id 7770015 here`      | `id 7770015 here` (7-digit real number, §9.4 fixed) |
+| `bus 7779 runs`        | `bus 7779 runs` (too few digits, §9.4 fixed) |
 
 ---
 
@@ -581,48 +604,61 @@ the whole sentence as a single `{{TAG:VAR|full₁|full₂|...}}` — usually
 correct but loses structure, and any verbal agreement is hidden inside
 the tag instead of factored out.
 
-### 9.4 `777(\d+)` regex eats legitimate trailing digits
+### 9.4 `777(\d+)` regex eats legitimate trailing digits — FIXED
 
-`restore_placeholders` is greedy. Any number in the source whose
-decimal expansion *starts* with `777` collides with the anchor space:
+> **Status:** Fixed. `restore_placeholders` now uses
+> `([0-9]?)777([0-9]{3})([0-9]*)` and rejects any match with a digit glued
+> before or after the six anchor digits (see §7). Anchors are always six
+> digits, so this is lossless for `$1..$999`. Tests:
+> `test_restore_placeholders_ignores_longer_number`,
+> `test_restore_placeholders_ignores_short_777`,
+> `test_restore_placeholders_ignores_leading_digit`.
+
+**Original bug.** The old `777(\d+)` was greedy, so any number whose
+decimal expansion *starts* with `777` collided with the anchor:
 
 - `"7770015"` → `"$15"` (parsed as `int("0015") == 15`)
 - `"77712345"` → `"$12345"`
 - `"the bus 7779 runs daily"` → `"the bus $9 runs daily"`
 
-The Python reference has the same bug verbatim.
+The Python reference still has this bug verbatim.
 
-### 9.5 Anchor mangling cleanup is incomplete
+### 9.5 Anchor mangling cleanup — FIXED (comprehensive normalizer)
 
-The cleanup (`clean_anchor_mangling` in `google_translate.rs`) repairs
-exactly one mangling: whitespace MT inserts *inside* the anchor digits,
-`"777 001"` → `"777001"`. Spaces *adjacent* to a complete anchor are
-deliberately preserved — a space before the anchor is a word separator,
-not mangling.
+> **Status:** Fixed. The old `clean_anchor_mangling` (a single
+> `"777 " → "777"` replace) was replaced by `normalize_anchors`
+> (`translator.rs`), a run-based, anchor-scoped de-mangler. It folds any
+> recognised numeral system to ASCII (`fold_digit`), strips separators
+> inserted between anchor digits (spaces of various widths, grouping
+> commas/periods, Arabic separators), and removes bidi marks — then
+> re-emits the canonical `777NNN`. Boundary checks keep it from touching
+> real numbers or the word-separating space before an anchor. Applied
+> per-line in `translate_as_block` (both the single- and multi-variant
+> branches) *and* defensively at the top of `restore_placeholders`. Tests:
+> the `test_normalize_*` and `test_fold_digit_*` sets in `translator.rs`,
+> plus the live `test_e2e_anchor_recovery_*` tests.
 
-> **Fixed (was a bug).** An earlier `" 777"` → `"777"` replace stripped
-> the space *before* the anchor. Translating
-> `The following {{PLURAL:$1|file is|$1 files are}} …` to Hindi gave
-> `निम्नलिखित 777001 फ़ाइलें …` from MT, which that replace turned into
-> `निम्नलिखित777001 …`, recovered as `निम्नलिखित$1 …` (placeholder glued
-> to the preceding word). It also broke prefix extraction: the lost
-> trailing space shortened the LCP so word-boundary snapping (§6.4)
-> dropped the shared `निम्नलिखित ` prefix and duplicated the whole
-> sentence into both PLURAL branches. Removing the replace fixes both.
-> Regression test: `test_clean_anchor_preserves_space_before_anchor`.
+**What we measured** (anchor `777002`, source `en`):
 
-Real MT behaviour still **not** handled:
+| Corruption | Where | Now |
+|------------|-------|-----|
+| native digits `٧٧٧٠٠٢` / `७७७००२` / `৭৭৭০০২` | Google → fa/mr/bn (and Arabic block) | folded → `777002` |
+| no-break space `777 002` | Google → fr | stripped → `777002` |
+| odd split `77 7002` | MinT → fr | stripped → `777002` |
+| grouping `777,002` / `7,77,002` | various | stripped → `777002` |
+| bidi marks around digits | RTL | stripped |
 
-- **Numeral system conversion**: Hindi MT may turn `777002` into
-  `७७७००२` (Devanagari digits); Arabic MT may emit `٧٧٧٠٠٢`.
-- **Digit grouping**: some engines render `"777,002"` or `"777.002"`
-  (and Indian grouping `"7,77,002"`) thinking it's a large number.
-- **Bidirectional marks**: RTL languages may bracket the digits with
-  `U+200E` / `U+200F`.
+The earlier `" 777" → "777"` regression (which glued the placeholder to
+the preceding word in Hindi, e.g. `निम्नलिखित 777001` → `निम्नलिखित$1`,
+and shortened the LCP so word-boundary snapping duplicated the sentence)
+stays fixed — the normalizer never consumes a leading separator.
+Regression test: `test_normalize_preserves_space_before_anchor`.
 
-None of these are detected, so reassembly silently produces wikitext
-with the anchors still corrupted, and recovery leaves the corruption
-in the output.
+Residual: a *new* numeral system whose digit block is not in
+`DIGIT_BLOCK_STARTS`, or a separator char not in the set, would slip
+through; both are one-line additions. Glued adjacent anchors
+(`$1$2` → `777001777002`) and an anchor with a digit glued directly in
+front (`5$1` → `5777001`) are intentionally left alone (ambiguous).
 
 ### 9.6 Block-translation reordering / merging
 
@@ -637,6 +673,10 @@ order. Counter-examples observed in the wild:
 
 When the split count mismatches, the algorithm errors out with no
 fallback to per-line translation.
+
+Numeral-system conversion of the `N.` markers themselves (Google emits
+`١.`/`٢.` for Arabic) is *tolerated*: the split regex `\n?\d+\.\s` uses a
+Unicode-aware `\d`, so native-digit markers still match.
 
 ### 9.7 Greedy MAX_VARIANTS = 64 is target-language dependent
 
@@ -794,7 +834,9 @@ behaviour: substitute representative counts (1, 2, 5) per variant.
 - `mediawiki_mt_assisted_localization.py` — single-file Python reference
   this implementation was ported from.
 - `banana-i18n-mt/src/expansion.rs` — Phase 1.
-- `banana-i18n-mt/src/google_translate.rs` — Phase 2 (`translate_as_block`).
+- `banana-i18n-mt/src/translator.rs` — Phase 2 (`MachineTranslator` trait,
+  `translate_as_block` default method, `normalize_anchors`, `fold_digit`).
+- `banana-i18n-mt/src/mint.rs`, `google_translate.rs`, `mock.rs` — backends.
 - `banana-i18n-mt/src/reassembly.rs` — Phases 3 and 4.
 - `banana-i18n-mt/README.md` — high-level overview with the
   English → French walkthrough.
