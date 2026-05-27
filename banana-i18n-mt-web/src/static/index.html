@@ -28,7 +28,7 @@
                 </div>
 
                 <div class="control-group">
-                    <label for="targetLang">Target Language:</label>
+                    <label for="targetLang">Language:</label>
                     <select id="targetLang">
                         <option value="es">Spanish (es)</option>
                         <option value="fr">French (fr)</option>
@@ -39,8 +39,12 @@
                 </div>
 
                 <div class="control-group">
-                    <label for="mtBackend">MT Engine:</label>
-                    <select id="mtBackend"></select>
+                    <label for="mtBackend">Engine:</label>
+                    <!-- Default option rendered up front so the control has a
+                         stable size before /api/backends responds (no flash). -->
+                    <select id="mtBackend">
+                        <option value="mint">MinT</option>
+                    </select>
                 </div>
 
                 <button id="exportBtn" class="export-btn" disabled>

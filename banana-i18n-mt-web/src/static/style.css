@@ -116,32 +116,40 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--font-size-large);
-    flex-wrap: wrap;
+    gap: var(--font-size-medium);
+    flex-wrap: nowrap;
     padding-block: var(--font-size-small);
   }
 
   .brand {
+    /* The brand absorbs the slack and truncates so the controls never wrap. */
     min-inline-size: 0;
+    flex: 1 1 auto;
   }
 
   .brand h1 {
     font-size: var(--font-size-large);
     line-height: 1.2;
     margin-bottom: 0;
-    text-wrap: balance;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .subtitle {
     font-size: var(--font-size-small);
     color: var(--color-subtle);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .controls {
     display: flex;
-    gap: var(--font-size-medium);
+    gap: var(--font-size-small);
     align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    flex: 0 0 auto;
   }
 
   .control-group {
@@ -153,6 +161,7 @@
   .controls label {
     font-size: var(--font-size-small);
     font-weight: 600;
+    white-space: nowrap;
   }
 
   .progress-container {
@@ -250,6 +259,18 @@
     transition:
       border-color 0.2s ease,
       background-color 0.2s ease;
+  }
+
+  /* Keep the language picker compact... */
+  #targetLang {
+    max-inline-size: 12rem;
+  }
+
+  /* ...and pin the engine picker to a fixed width so it does not reflow (and
+     bump the header to a second row) when /api/backends populates it. */
+  #mtBackend {
+    inline-size: 9.5rem;
+    max-inline-size: 9.5rem;
   }
 
   select:hover {
@@ -586,6 +607,14 @@
 
     .message-content {
       grid-template-columns: 1fr;
+    }
+  }
+
+  /* Below desktop the single row can't fit; allow it to wrap again. */
+  @media (max-width: 768px) {
+    .header-inner,
+    .controls {
+      flex-wrap: wrap;
     }
   }
 
