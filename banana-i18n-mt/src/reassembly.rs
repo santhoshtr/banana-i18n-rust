@@ -320,6 +320,10 @@ pub fn get_similarity(a: &str, b: &str) -> f32 {
 }
 
 /// Get Longest Common Prefix of all strings (Python line 313-320)
+///
+/// Operates on `Vec<char>` to keep all bounds and indexing in character
+/// space — never bytes. This avoids the byte/char confusion described
+/// in docs/mt_assisted_localization.md §9.1.
 fn get_lcp(strings: &[String]) -> String {
     if strings.is_empty() {
         return String::new();
@@ -329,22 +333,21 @@ fn get_lcp(strings: &[String]) -> String {
         return strings[0].clone();
     }
 
-    // Find the shortest string length
-    let min_len = strings.iter().map(|s| s.len()).min().unwrap_or(0);
+    let char_vecs: Vec<Vec<char>> = strings.iter().map(|s| s.chars().collect()).collect();
+    let min_len = char_vecs.iter().map(|v| v.len()).min().unwrap_or(0);
 
-    // Find common prefix length
     let mut prefix_len = 0;
     'outer: for i in 0..min_len {
-        let first_char = strings[0].chars().nth(i);
-        for string in &strings[1..] {
-            if string.chars().nth(i) != first_char {
+        let first_char = char_vecs[0][i];
+        for cv in &char_vecs[1..] {
+            if cv[i] != first_char {
                 break 'outer;
             }
         }
         prefix_len = i + 1;
     }
 
-    strings[0].chars().take(prefix_len).collect()
+    char_vecs[0][..prefix_len].iter().collect()
 }
 
 /// Get Longest Common Suffix by reversing and using LCP (Python lines 322-327)
@@ -470,6 +473,91 @@ mod tests {
         let strings = vec!["abc".to_string(), "xyz".to_string()];
         let lcs = get_lcs(&strings);
         assert_eq!(lcs, "");
+    }
+
+    // ========== Multi-byte UTF-8 LCP/LCS Tests ==========
+    // These pin down behaviour on non-ASCII input. They guard against a
+    // regression of the byte/char confusion described in
+    // docs/mt_assisted_localization.md §9.1.
+
+    #[test]
+    fn test_get_lcp_multibyte_cyrillic() {
+        // "мам" is the shared prefix; the strings differ at the next char
+        // ('а' vs 'о'). Each Cyrillic letter is 2 UTF-8 bytes.
+        let strings = vec!["мама".to_string(), "мамочка".to_string()];
+        let lcp = get_lcp(&strings);
+        assert_eq!(lcp, "мам");
+        assert_eq!(lcp.chars().count(), 3);
+    }
+
+    #[test]
+    fn test_get_lcp_multibyte_french() {
+        // "café" (with é = 2 bytes) is the full prefix of "cafés".
+        let strings = vec!["café".to_string(), "cafés".to_string()];
+        let lcp = get_lcp(&strings);
+        assert_eq!(lcp, "café");
+        assert_eq!(lcp.chars().count(), 4);
+    }
+
+    #[test]
+    fn test_get_lcp_multibyte_identical_inputs() {
+        // Identical multi-byte strings: LCP is the whole string. The
+        // returned char count must match the input char count exactly —
+        // not the byte count.
+        let strings = vec!["café".to_string(), "café".to_string()];
+        let lcp = get_lcp(&strings);
+        assert_eq!(lcp, "café");
+        assert_eq!(lcp.chars().count(), 4);
+        // Sanity: byte length differs from char length for this input.
+        assert_eq!(lcp.len(), 5);
+    }
+
+    #[test]
+    fn test_get_lcp_mixed_ascii_multibyte() {
+        // First char 'a' is shared; second char 'é' (2 bytes) vs 'b' (1 byte)
+        // diverges. LCP must stop at 'a'.
+        let strings = vec!["aé".to_string(), "ab".to_string()];
+        let lcp = get_lcp(&strings);
+        assert_eq!(lcp, "a");
+    }
+
+    #[test]
+    fn test_get_lcp_returned_is_actual_prefix() {
+        // Property: the returned LCP must be a prefix of every input string.
+        let strings = vec![
+            "мама".to_string(),
+            "мамочка".to_string(),
+            "мамаша".to_string(),
+        ];
+        let lcp = get_lcp(&strings);
+        for s in &strings {
+            assert!(
+                s.starts_with(&lcp),
+                "LCP '{}' must be a prefix of '{}'",
+                lcp,
+                s
+            );
+        }
+        // "мам" is the actual LCP (the strings diverge at the 4th char).
+        assert_eq!(lcp, "мам");
+    }
+
+    #[test]
+    fn test_get_lcs_multibyte_cyrillic() {
+        // Both strings end with " отправил" — a 9-character Cyrillic suffix
+        // containing 2-byte chars and one ASCII space.
+        let strings = vec!["я отправил".to_string(), "она отправил".to_string()];
+        let lcs = get_lcs(&strings);
+        assert_eq!(lcs, " отправил");
+    }
+
+    #[test]
+    fn test_get_lcs_multibyte_identical_inputs() {
+        // Identical multi-byte strings: LCS is the whole string.
+        let strings = vec!["café".to_string(), "café".to_string()];
+        let lcs = get_lcs(&strings);
+        assert_eq!(lcs, "café");
+        assert_eq!(lcs.chars().count(), 4);
     }
 
     // ========== Similarity Tests ==========
@@ -681,6 +769,32 @@ mod tests {
         assert!(result.contains("{{GENDER:$1|"));
         assert!(result.contains("|He|She|They}"));
         assert!(result.contains("}} sent a message"));
+    }
+
+    #[test]
+    fn test_reassemble_russian_gender_variants() {
+        // End-to-end exercise of fold_strings → get_lcp / get_lcs →
+        // restore_placeholders on Cyrillic input. Each Russian word here
+        // contains 2-byte UTF-8 characters; the shared suffix " сообщение"
+        // must be recovered correctly without slicing inside a multi-byte
+        // character.
+        let mut var_types = HashMap::new();
+        var_types.insert("$1".to_string(), "GENDER".to_string());
+        let reassembler = Reassembler::new(var_types);
+
+        let variants = vec![
+            create_variant(&[("$1", 0)], "Он отправил сообщение"),
+            create_variant(&[("$1", 1)], "Она отправила сообщение"),
+        ];
+
+        let result = reassembler.reassemble(variants).unwrap();
+
+        // The shared suffix " сообщение" should sit outside the GENDER tag.
+        assert!(result.contains("{{GENDER:$1|"));
+        assert!(result.ends_with(" сообщение"));
+        // Both gendered phrases should appear as options.
+        assert!(result.contains("Он отправил"));
+        assert!(result.contains("Она отправила"));
     }
 
     // ========== MessageContext Convenience Test ==========
