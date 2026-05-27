@@ -213,8 +213,7 @@ impl GoogleTranslateProvider {
 
     /// Translate multiple variants as a single block with numbering
     ///
-    /// This method implements the Python `translate_as_block()` approach,
-    /// joining all variants with numbered prefixes to force MT consistency.
+    /// Joins all variants with numbered prefixes to force MT consistency.
     /// All variants are translated in one API call, ensuring the MT system
     /// sees the context and maintains consistency across related variants.
     ///
@@ -227,7 +226,7 @@ impl GoogleTranslateProvider {
     /// * `Ok(Vec<String>)` - Translated variants in same order as input
     /// * `Err(MtError)` - If translation fails or count mismatch occurs
     ///
-    /// # Algorithm (matches Python lines 145-186)
+    /// # Algorithm
     /// ```text
     /// 1. Join variants with numbered prefixes: "1. text\n2. text\n..."
     /// 2. Translate the entire block as single text
@@ -263,7 +262,7 @@ impl GoogleTranslateProvider {
             return Ok(vec![result]);
         }
 
-        // 1. Join with numbered prefixes (Python line 152-154)
+        // 1. Join with numbered prefixes
         let input_block: String = variants
             .iter()
             .enumerate()
@@ -276,7 +275,7 @@ impl GoogleTranslateProvider {
             .translate(&input_block, source_locale, target_locale)
             .await?;
 
-        // 3. Split back using regex (Python lines 167-171)
+        // 3. Split back using regex
         use regex::Regex;
         let re = Regex::new(r"\n?\d+\.\s").unwrap();
 
@@ -287,7 +286,7 @@ impl GoogleTranslateProvider {
             .filter(|s| !s.is_empty())
             .collect();
 
-        // 4. Safety check: same count (Python lines 173-175)
+        // 4. Safety check: same count
         if lines.len() != variants.len() {
             return Err(MtError::TranslationError(format!(
                 "Block translation count mismatch: expected {}, got {}. Block: '{}'",
@@ -297,7 +296,7 @@ impl GoogleTranslateProvider {
             )));
         }
 
-        // 5. Clean up anchor token mangling (Python lines 177-180)
+        // 5. Clean up anchor token mangling
         let cleaned: Vec<String> = lines.iter().map(|line| clean_anchor_mangling(line)).collect();
 
         Ok(cleaned)
@@ -310,8 +309,7 @@ impl GoogleTranslateProvider {
 /// Spaces *around* a complete anchor are deliberately left alone — a space
 /// before the anchor is a word separator (e.g. Hindi `"निम्नलिखित 777001 फ़ाइलें"`,
 /// "the following $1 files"); stripping it would glue the placeholder to the
-/// preceding word and yield `"निम्नलिखित$1"`. This matches the Python
-/// reference, which only repairs the internal split. See
+/// preceding word and yield `"निम्नलिखित$1"`. See
 /// docs/mt_assisted_localization.md §9.5.
 fn clean_anchor_mangling(line: &str) -> String {
     line.replace("777 ", "777")

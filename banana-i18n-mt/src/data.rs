@@ -1,7 +1,6 @@
 //! Core data structures for MT-assisted localization
 //!
-//! This module defines the fundamental data types used throughout the MT pipeline,
-//! closely matching the Python reference implementation design for simplicity.
+//! This module defines the fundamental data types used throughout the MT pipeline.
 
 use std::collections::HashMap;
 

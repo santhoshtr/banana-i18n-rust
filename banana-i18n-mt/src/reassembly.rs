@@ -1,25 +1,15 @@
-//! Reassembly Engine for Reconstructing Wikitext from Translated Variants  
+//! Reassembly Engine for Reconstructing Wikitext from Translated Variants
 //!
-//! This module implements the core algorithm from the Python reference implementation
-//! for reconstructing wikitext from machine translated variants. The algorithm uses
+//! This module reconstructs wikitext from machine translated variants using
 //! axis-collapsing to systematically combine variants back into structured wikitext.
 //!
 //! # Algorithm Overview
 //!
-//! The reassembly follows the Python `Reassembler` class design:
 //! 1. **Consistency Check** - Verify MT didn't hallucinate (similarity, with a shared-stem fallback)
 //! 2. **LCP/LCS Extraction** - Find longest common prefix/suffix across variants
 //! 3. **Word Boundary Snapping** - Snap prefix/suffix to clean word boundaries
 //! 4. **Axis Collapsing** - Systematically collapse each dimension (GENDER, PLURAL)
 //! 5. **Wikitext Reconstruction** - Wrap differences in {{TAG:VAR|opt1|opt2}} format
-//!
-//! # Python Reference
-//!
-//! This implementation closely matches the Python lines 199-334:
-//! - `Reassembler.reassemble()` - Main entry point with axis collapsing
-//! - `Reassembler._collapse_axis()` - Groups variants and collapses one dimension
-//! - `Reassembler._fold_strings()` - Extracts LCP/LCS and builds wikitext
-//! - Word boundary snapping (lines 278-298 in Python)
 
 use super::data::{MessageContext, TranslationVariant};
 use super::error::{MtError, MtResult};
@@ -45,7 +35,7 @@ const STEM_THRESHOLD: f32 = 0.5;
 
 /// Reassembler handles reconstruction of wikitext from translated variants
 ///
-/// This struct implements the axis-collapsing algorithm from the Python reference,
+/// This struct implements the axis-collapsing algorithm,
 /// taking a set of translated variants and systematically combining them back
 /// into the original wikitext structure with {{PLURAL|...}} and {{GENDER|...}} syntax.
 #[derive(Debug)]
@@ -62,8 +52,7 @@ impl Reassembler {
 
     /// Main reassembly entry point - collapses all dimensions
     ///
-    /// This function implements the Python `Reassembler.reassemble()` method,
-    /// systematically collapsing each axis (variable dimension) until only
+    /// Systematically collapses each axis (variable dimension) until only
     /// a single reconstructed wikitext remains.
     ///
     /// # Arguments
@@ -73,7 +62,7 @@ impl Reassembler {
     /// * `Ok(String)` - Reconstructed wikitext with proper {{TAG:VAR|...}} syntax
     /// * `Err(MtError)` - If inconsistency detected or reassembly fails
     ///
-    /// # Algorithm (matches Python lines 204-218)
+    /// # Algorithm
     /// ```text
     /// 1. Determine axes to collapse (all variable IDs from first variant)
     /// 2. For each axis:
@@ -95,7 +84,7 @@ impl Reassembler {
             return Ok(self.restore_placeholders(final_text));
         }
 
-        // 1. Determine the axes to collapse (Python line 209)
+        // 1. Determine the axes to collapse
         let axes: Vec<String> = if variants[0].state.is_empty() {
             // No state means no magic words
             let final_text = &variants[0].translated_text;
@@ -104,7 +93,7 @@ impl Reassembler {
             variants[0].state.keys().cloned().collect()
         };
 
-        // 2. Collapse each axis one by one (Python lines 212-214)
+        // 2. Collapse each axis one by one
         let mut current_set = variants;
         for axis in &axes {
             current_set = self.collapse_axis(current_set, axis)?;
@@ -118,16 +107,15 @@ impl Reassembler {
             )));
         }
 
-        // 4. Restore placeholders (777001 → $1) - Python line 217
+        // 4. Restore placeholders (777001 → $1)
         let final_text = &current_set[0].translated_text;
         Ok(self.restore_placeholders(final_text))
     }
 
     /// Collapse one axis by grouping variants and folding strings
     ///
-    /// This implements the Python `_collapse_axis()` method (lines 220-249),
-    /// grouping variants by all dimensions except the current axis, then
-    /// folding the strings for each group.
+    /// Groups variants by all dimensions except the current axis, then
+    /// folds the strings for each group.
     ///
     /// # Arguments
     /// * `variants` - Current set of variants to collapse
@@ -141,7 +129,7 @@ impl Reassembler {
         variants: Vec<TranslationVariant>,
         axis: &str,
     ) -> MtResult<Vec<TranslationVariant>> {
-        // Group variants by all dimensions EXCEPT the current axis (Python lines 225-231)
+        // Group variants by all dimensions EXCEPT the current axis
         let mut groups: HashMap<Vec<(String, usize)>, Vec<TranslationVariant>> = HashMap::new();
 
         for variant in variants {
@@ -160,17 +148,17 @@ impl Reassembler {
                 .push(variant);
         }
 
-        // Collapse each group (Python lines 234-248)
+        // Collapse each group
         let mut collapsed = Vec::new();
         for (other_dims, group_members) in groups {
-            // Sort members by their index for the current axis (Python line 236)
+            // Sort members by their index for the current axis
             let mut sorted_members = group_members;
             sorted_members.sort_by_key(|v| v.state.get(axis).copied().unwrap_or(0));
 
-            // Perform the fold using LCP/LCS (Python line 239)
+            // Perform the fold using LCP/LCS
             let new_text = self.fold_strings(&sorted_members, axis)?;
 
-            // Create a new "virtual" variant for the next iteration (Python lines 242-247)
+            // Create a new "virtual" variant for the next iteration
             let new_state: HashMap<String, usize> = other_dims.into_iter().collect();
             collapsed.push(TranslationVariant {
                 state: new_state,
@@ -184,9 +172,8 @@ impl Reassembler {
 
     /// Fold a group of strings, wrapping differences in wikitext syntax
     ///
-    /// This implements the Python `_fold_strings()` method (lines 251-311),
-    /// using LCP/LCS extraction with word boundary snapping to identify
-    /// stable and variable parts, then wrapping in {{TAG:VAR|opt1|opt2}} format.
+    /// Uses LCP/LCS extraction with word boundary snapping to identify
+    /// stable and variable parts, then wraps in {{TAG:VAR|opt1|opt2}} format.
     ///
     /// # Arguments
     /// * `members` - Variants in this group (sorted by axis value)
@@ -198,7 +185,7 @@ impl Reassembler {
     fn fold_strings(&self, members: &[TranslationVariant], var_id: &str) -> MtResult<String> {
         let texts: Vec<String> = members.iter().map(|m| m.translated_text.clone()).collect();
 
-        // If all texts are identical, no magic word needed (Python line 257-259)
+        // If all texts are identical, no magic word needed
         if texts.len() <= 1 {
             return Ok(texts.first().cloned().unwrap_or_default());
         }
@@ -208,7 +195,7 @@ impl Reassembler {
             return Ok(texts[0].clone());
         }
 
-        // === CONSISTENCY GUARD === (Python lines 263-272)
+        // === CONSISTENCY GUARD ===
         // Check similarity between variants - if too different, MT likely hallucinated.
         // A low overall similarity alone is not enough to reject: legitimate
         // inflectional variants (especially short words in combining-character
@@ -229,11 +216,11 @@ impl Reassembler {
             }
         }
 
-        // Get raw LCP and LCS (Python lines 275-276)
+        // Get raw LCP and LCS
         let raw_prefix = get_lcp(&texts);
         let raw_suffix = get_lcs(&texts);
 
-        // Snap prefix BACK to last word boundary (Python lines 278-285)
+        // Snap prefix BACK to last word boundary
         let prefix = if raw_prefix.is_empty() || raw_prefix.ends_with(' ') {
             raw_prefix
         } else {
@@ -245,7 +232,7 @@ impl Reassembler {
             }
         };
 
-        // Snap suffix FORWARD to first word boundary (Python lines 287-297)
+        // Snap suffix FORWARD to first word boundary
         let suffix = if raw_suffix.is_empty() || raw_suffix.starts_with(' ') {
             raw_suffix
         } else {
@@ -257,7 +244,7 @@ impl Reassembler {
             }
         };
 
-        // Extract the differing "middles" (Python lines 300-305)
+        // Extract the differing "middles"
         let mut middles = Vec::new();
         for text in &texts {
             let start = prefix.len();
@@ -275,7 +262,7 @@ impl Reassembler {
             middles.push(middle);
         }
 
-        // Get tag type and construct wikitext (Python lines 307-311)
+        // Get tag type and construct wikitext
         let tag_type = self
             .variable_types
             .get(var_id)
@@ -289,7 +276,7 @@ impl Reassembler {
         ))
     }
 
-    /// Restore placeholders: 777001 → $1 (Python lines 329-334)
+    /// Restore placeholders: 777001 → $1
     fn restore_placeholders(&self, text: &str) -> String {
         let re = Regex::new(r"777(\d+)").unwrap();
         re.replace_all(text, |caps: &regex::Captures| {
@@ -303,8 +290,7 @@ impl Reassembler {
 
 /// Calculate similarity ratio between two strings using sequence matching
 ///
-/// This implements a simple LCS-based similarity measure similar to Python's
-/// `difflib.SequenceMatcher.ratio()` function (Python line 189-190).
+/// A simple LCS-based similarity measure: `2 * LCS / (|a| + |b|)`.
 ///
 /// # Arguments
 /// * `a` - First string
@@ -362,7 +348,7 @@ fn shared_affix_ratio(a: &str, b: &str) -> f32 {
     shared as f32 / min_len as f32
 }
 
-/// Get Longest Common Prefix of all strings (Python line 313-320)
+/// Get Longest Common Prefix of all strings
 ///
 /// Operates on `Vec<char>` to keep all bounds and indexing in character
 /// space — never bytes. This avoids the byte/char confusion described
@@ -393,7 +379,7 @@ fn get_lcp(strings: &[String]) -> String {
     char_vecs[0][..prefix_len].iter().collect()
 }
 
-/// Get Longest Common Suffix by reversing and using LCP (Python lines 322-327)
+/// Get Longest Common Suffix by reversing and using LCP
 fn get_lcs(strings: &[String]) -> String {
     if strings.is_empty() {
         return String::new();

@@ -1,7 +1,6 @@
 //! End-to-End Integration Tests for Machine Translation Pipeline
 //!
-//! These tests exercise the complete pipeline using the new simplified API design,
-//! following the Python reference implementation patterns.
+//! These tests exercise the complete pipeline using the simplified API design.
 //!
 //! # Running Integration Tests
 //!
@@ -405,7 +404,7 @@ mod tests {
     }
 
     // ============================================================================
-    // TEST 6: Full Workflow Demo (matching Python example)
+    // TEST 6: Full Workflow Demo
     // ============================================================================
 
     #[test]
@@ -413,9 +412,8 @@ mod tests {
         println!("\n{}", "=".repeat(80));
         println!("TEST 6: Full Workflow Demo (Mock Translation)");
         println!("{}", "=".repeat(80));
-        println!("Purpose: Demonstrate complete workflow matching Python reference");
+        println!("Purpose: Demonstrate the complete workflow end to end");
 
-        // This matches the Python example from lines 349-364
         let source_message = "{{GENDER:$1|He|She}} sent {{PLURAL:$2|a message|$2 messages}} to {{GENDER:$3|him|her}}.";
 
         println!("\n📝 SOURCE: \"{}\"", source_message);
@@ -425,7 +423,7 @@ mod tests {
         let ast = parser.parse();
         println!("✅ Parsed AST ({} nodes)", ast.len());
 
-        // 2. Prepare context (equivalent to Python prepare_for_translation)
+        // 2. Prepare context
         let mut context =
             prepare_for_translation(&ast, "en", "example-message").expect("Failed to prepare");
 
@@ -466,7 +464,7 @@ mod tests {
             );
         }
 
-        // 4. Reassemble (equivalent to Python Reassembler)
+        // 4. Reassemble
         let reassembler = Reassembler::new(context.variable_types.clone());
         let result = reassembler
             .reassemble(context.variants)

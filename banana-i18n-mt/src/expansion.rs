@@ -1,12 +1,9 @@
 //! Unified Expansion Engine for Cartesian Product (PLURAL × GENDER)
 //!
-//! This module generates all combinations of PLURAL and GENDER variants from a message AST,
-//! closely following the Python reference implementation's approach. It combines the
-//! functionality previously split across multiple modules.
+//! This module generates all combinations of PLURAL and GENDER variants from a message AST.
 //!
 //! # Algorithm Overview
 //!
-//! The expansion follows the Python reference pattern:
 //! 1. **Collect Choices** - Find all PLURAL/GENDER magic words and their option counts
 //! 2. **Cartesian Product** - Generate all state combinations using itertools-style product
 //! 3. **Resolve Variants** - Convert each state to a plain text variant with anchor tokens
@@ -67,9 +64,8 @@ pub struct GenderForm {
 
 /// Main expansion function: converts AST to all variant combinations
 ///
-/// This function matches the Python `expand_to_variants()` design, creating
-/// a cartesian product of all magic word choices and resolving each combination
-/// to a plain text string with anchor tokens.
+/// Creates a cartesian product of all magic word choices and resolves each
+/// combination to a plain text string with anchor tokens.
 ///
 /// # Arguments
 /// * `ast` - The parsed AST of the message containing magic words
@@ -121,8 +117,7 @@ pub fn expand_to_variants(ast: &AstNodeList, locale: &str) -> MtResult<Vec<Trans
 
 /// Prepare message for translation by creating a complete MessageContext
 ///
-/// This function matches the Python `prepare_for_translation()` design, creating
-/// a MessageContext with variable type information and all expanded variants.
+/// Creates a MessageContext with variable type information and all expanded variants.
 ///
 /// # Arguments
 /// * `ast` - The parsed AST of the message
