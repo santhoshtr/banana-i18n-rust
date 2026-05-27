@@ -461,14 +461,20 @@ This is the final suggested translation for the French translator to review!
 - Numeric range: `777001` to `777999` (supports 999 placeholders)
 - MT behavior: Treated as identifier/proper noun, preserved
 
-#### 2. Similarity Threshold (70%)
+#### 2. Similarity Threshold (66%) + shared-stem fallback
 
 **Tested Values**:
 - **50%**: Too permissive, accepts corrupted translations
-- **70%**: Balanced, rejects hallucinations while allowing grammatical changes
+- **66%**: Balanced, rejects hallucinations while allowing grammatical changes
 - **90%**: Too strict, rejects valid inflections in Slavic/Arabic languages
 
-**Implementation**: LCS-based similarity ratio = `2 * LCS / (len_a + len_b)`
+**Implementation**: LCS-based similarity ratio = `2 * LCS / (len_a + len_b)`.
+
+A low similarity is not sufficient to reject: short inflected variants
+(e.g. Hindi श्रेणी / श्रेणियाँ) can dip below the threshold yet still be
+correct. A pair is rejected only when it *also* fails the shared-stem
+check (`shared_affix_ratio < 0.5`). A genuine hallucination shares no
+stem and is still rejected. See `docs/mt_assisted_localization.md` §9.15.
 
 #### 3. Word Boundary Snapping
 

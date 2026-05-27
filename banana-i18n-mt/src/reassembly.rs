@@ -7,7 +7,7 @@
 //! # Algorithm Overview
 //!
 //! The reassembly follows the Python `Reassembler` class design:
-//! 1. **Consistency Check** - Verify MT didn't hallucinate (similarity > 70%)
+//! 1. **Consistency Check** - Verify MT didn't hallucinate (similarity, with a shared-stem fallback)
 //! 2. **LCP/LCS Extraction** - Find longest common prefix/suffix across variants
 //! 3. **Word Boundary Snapping** - Snap prefix/suffix to clean word boundaries
 //! 4. **Axis Collapsing** - Systematically collapse each dimension (GENDER, PLURAL)
@@ -26,9 +26,22 @@ use super::error::{MtError, MtResult};
 use regex::Regex;
 use std::collections::HashMap;
 
-/// Consistency threshold for MT translation similarity
-/// Below this threshold, we consider the MT output too inconsistent to reassemble
-const CONSISTENCY_THRESHOLD: f32 = 0.7;
+/// Consistency threshold for MT translation similarity.
+/// Below this threshold a variant pair is suspect; it is only rejected if it
+/// also fails the shared-stem check (see [`STEM_THRESHOLD`]).
+const CONSISTENCY_THRESHOLD: f32 = 0.66;
+
+/// Minimum fraction of the shorter variant that must be a shared leading/
+/// trailing run of characters for a low-similarity pair to still count as a
+/// legitimate inflection (shared stem) rather than a hallucination.
+///
+/// Short, inflected translations — e.g. Hindi श्रेणी / श्रेणियाँ
+/// ("category" / "categories") — can score below CONSISTENCY_THRESHOLD on the
+/// length-normalized LCS similarity even though they are correct, because the
+/// inflectional suffix is large relative to the (short) word. Such variants
+/// still share a stem; a genuine hallucination shares little. See
+/// docs/mt_assisted_localization.md §9.15.
+const STEM_THRESHOLD: f32 = 0.5;
 
 /// Reassembler handles reconstruction of wikitext from translated variants
 ///
@@ -196,10 +209,16 @@ impl Reassembler {
         }
 
         // === CONSISTENCY GUARD === (Python lines 263-272)
-        // Check similarity between variants - if too different, MT likely hallucinated
+        // Check similarity between variants - if too different, MT likely hallucinated.
+        // A low overall similarity alone is not enough to reject: legitimate
+        // inflectional variants (especially short words in combining-character
+        // scripts) share a stem. Reject only when similarity is low AND the
+        // shared-stem fraction is also low. See docs §9.15.
         for i in 1..texts.len() {
             let sim = get_similarity(&texts[0], &texts[i]);
-            if sim < CONSISTENCY_THRESHOLD {
+            if sim < CONSISTENCY_THRESHOLD
+                && shared_affix_ratio(&texts[0], &texts[i]) < STEM_THRESHOLD
+            {
                 return Err(MtError::ConsistencyError(format!(
                     "MT Inconsistency detected on {}. Variants are too different (similarity: {:.1}%):\n1: {}\n2: {}",
                     var_id,
@@ -317,6 +336,30 @@ pub fn get_similarity(a: &str, b: &str) -> f32 {
     // This matches the SequenceMatcher.ratio() formula
     let total_length = a_chars.len() + b_chars.len();
     (2.0 * lcs_length as f32) / total_length as f32
+}
+
+/// Fraction of the shorter string covered by the shared leading + trailing
+/// run of characters across the pair.
+///
+/// Returns a value in [0.0, 1.0]: high when the two strings share a stem
+/// (legitimate inflection — common prefix and/or suffix), near zero when they
+/// are unrelated (likely hallucination). Used alongside [`get_similarity`] to
+/// avoid rejecting correct but short, heavily-inflected translations. Reuses
+/// the UTF-8-safe [`get_lcp`] / [`get_lcs`].
+fn shared_affix_ratio(a: &str, b: &str) -> f32 {
+    let min_len = a.chars().count().min(b.chars().count());
+    if min_len == 0 {
+        return 0.0;
+    }
+
+    let pair = [a.to_string(), b.to_string()];
+    let lcp_len = get_lcp(&pair).chars().count();
+    let lcs_len = get_lcs(&pair).chars().count();
+
+    // Cap so an overlapping prefix + suffix on near-identical input can't
+    // push the ratio above 1.0.
+    let shared = (lcp_len + lcs_len).min(min_len);
+    shared as f32 / min_len as f32
 }
 
 /// Get Longest Common Prefix of all strings (Python line 313-320)
@@ -676,6 +719,90 @@ mod tests {
 
         let result = reassembler.fold_strings(&variants, "$1");
         assert!(result.is_ok());
+    }
+
+    // ========== Stem-aware Consistency Tests ==========
+
+    #[test]
+    fn test_shared_affix_ratio_inflection() {
+        // Hindi "Category" / "Categories": share the stem श्रेण (5 of the
+        // singular's 6 code points). LCS-ratio similarity is only 66.7%, but
+        // the shared-stem ratio is high.
+        let ratio = shared_affix_ratio("श्रेणी", "श्रेणियाँ");
+        assert!(
+            ratio >= STEM_THRESHOLD,
+            "expected shared-stem ratio >= {}, got {}",
+            STEM_THRESHOLD,
+            ratio
+        );
+        // 5 shared prefix cps / 6 = 0.833…
+        assert!((ratio - 5.0 / 6.0).abs() < 1e-6, "got {}", ratio);
+    }
+
+    #[test]
+    fn test_shared_affix_ratio_unrelated() {
+        // Two unrelated Hindi words share essentially no affix.
+        let ratio = shared_affix_ratio("श्रेणी", "नमस्ते");
+        assert!(
+            ratio < STEM_THRESHOLD,
+            "expected shared-stem ratio < {}, got {}",
+            STEM_THRESHOLD,
+            ratio
+        );
+    }
+
+    #[test]
+    fn test_shared_affix_ratio_identical() {
+        assert_eq!(shared_affix_ratio("श्रेणी", "श्रेणी"), 1.0);
+        assert_eq!(shared_affix_ratio("hello", "hello"), 1.0);
+    }
+
+    #[test]
+    fn test_shared_affix_ratio_empty() {
+        assert_eq!(shared_affix_ratio("", ""), 0.0);
+        assert_eq!(shared_affix_ratio("abc", ""), 0.0);
+    }
+
+    #[test]
+    fn test_consistency_accepts_hindi_plural() {
+        // Regression test for the reported bug: {{PLURAL:$1|Category|Categories}}
+        // → hi yields श्रेणी / श्रेणियाँ. These are correct but score only
+        // 66.7% similarity, which sits just above CONSISTENCY_THRESHOLD (0.66)
+        // and would have been rejected under the old 0.70 threshold. The
+        // shared stem (see the test below) is the backstop for anything that
+        // falls even lower.
+        let mut var_types = HashMap::new();
+        var_types.insert("$1".to_string(), "PLURAL".to_string());
+        let reassembler = Reassembler::new(var_types);
+
+        let variants = vec![
+            create_variant(&[("$1", 0)], "श्रेणी"),
+            create_variant(&[("$1", 1)], "श्रेणियाँ"),
+        ];
+
+        let result = reassembler.reassemble(variants).unwrap();
+        assert_eq!(result, "{{PLURAL:$1|श्रेणी|श्रेणियाँ}}");
+    }
+
+    #[test]
+    fn test_consistency_accepts_low_similarity_shared_stem() {
+        // Similarity 2*5/(5+11) = 0.625 is below CONSISTENCY_THRESHOLD (0.66),
+        // but the whole shorter string is a shared prefix (stem ratio 1.0), so
+        // the pair is accepted via the stem fallback rather than rejected.
+        assert!(get_similarity("abcde", "abcdefghijk") < CONSISTENCY_THRESHOLD);
+        assert!(shared_affix_ratio("abcde", "abcdefghijk") >= STEM_THRESHOLD);
+
+        let mut var_types = HashMap::new();
+        var_types.insert("$1".to_string(), "PLURAL".to_string());
+        let reassembler = Reassembler::new(var_types);
+
+        let variants = vec![
+            create_variant(&[("$1", 0)], "abcde"),
+            create_variant(&[("$1", 1)], "abcdefghijk"),
+        ];
+
+        let result = reassembler.reassemble(variants).unwrap();
+        assert_eq!(result, "{{PLURAL:$1|abcde|abcdefghijk}}");
     }
 
     // ========== Placeholder Restoration Tests ==========

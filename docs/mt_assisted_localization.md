@@ -325,10 +325,18 @@ This is the heart of the algorithm.
 
 2. **Consistency guard**
    For every `texts[i] (i ≥ 1)` compute `get_similarity(texts[0],
-   texts[i])`. If any pair scores below `CONSISTENCY_THRESHOLD = 0.7`
-   return `MtError::ConsistencyError`. This is the "hallucination
-   detector": when the MT rewrites a sentence entirely for one variant,
-   LCS-based similarity collapses below 70%.
+   texts[i])`. This is the "hallucination detector": when the MT
+   rewrites a sentence entirely for one variant, LCS-based similarity
+   collapses below `CONSISTENCY_THRESHOLD = 0.66`.
+
+   A low similarity alone is *not* enough to reject. Short, inflected
+   variants legitimately diverge yet still share a **stem**, so the
+   guard also checks `shared_affix_ratio(texts[0], texts[i])` — the
+   fraction of the shorter string that is a shared leading/trailing run
+   of characters. A pair is rejected with `MtError::ConsistencyError`
+   only when *both* are low: `sim < 0.66 && shared_affix_ratio <
+   STEM_THRESHOLD (0.5)`. A genuine hallucination fails both (no shared
+   stem); a correct inflection passes the stem test. See §9.15.
 
 3. **LCP / LCS extraction**
    - `raw_prefix = get_lcp(texts)` — character-by-character longest
@@ -698,15 +706,52 @@ that change both verb and adjective endings. The current code uses
 non-deterministic `HashMap` iteration to pick the order, so two runs
 on the same input can produce different (both valid) wikitext.
 
-### 9.15 70% threshold is empirical
+### 9.15 Empirical threshold — MITIGATED (lowered threshold + stem fallback)
 
-`CONSISTENCY_THRESHOLD = 0.7` was picked by hand. For Russian,
-Polish, Arabic and other heavily-inflected languages the same source
-sentence can legitimately diverge to ~60% similarity across number
-categories ("письмо" vs "писем" vs "письма" share two characters of a
-seven-character word). The threshold will reject valid translations
-for those languages while still accepting subtler hallucinations in
-analytic languages like Chinese.
+> **Status:** Mitigated by two changes: (1) `CONSISTENCY_THRESHOLD`
+> lowered from `0.70` to `0.66`; (2) the guard no longer rejects on low
+> similarity alone — it also requires a low shared-stem fraction (see
+> §6.3 and `shared_affix_ratio` in `reassembly.rs`). Tests:
+> `test_consistency_accepts_hindi_plural`,
+> `test_consistency_accepts_low_similarity_shared_stem`, and the
+> `test_shared_affix_ratio_*` set.
+
+`CONSISTENCY_THRESHOLD` was picked by hand. For Russian, Polish,
+Arabic, Hindi and other heavily-inflected languages the same source
+sentence can legitimately diverge across number categories, and the
+metric is worst for *short* words where there is no surrounding
+context to dilute the inflectional difference.
+
+**Concrete case that prompted the fix.** Translating
+`{{PLURAL:$1|Category|Categories}}` to Hindi yields:
+
+```
+"Category"   → श्रेणी      (6 code points)
+"Categories" → श्रेणियाँ   (9 code points)
+```
+
+Both are correct. They share the stem श्रेण (5 code points), but the
+LCS-ratio is only `2·5 / (6+9) = 66.7%` because the Devanagari plural
+suffix is 4 separate code points (ि य ा ँ). Under the old `0.70`
+threshold the guard aborted reassembly with a `ConsistencyError`.
+
+**Mitigation.** Two complementary relaxations:
+
+1. **Lower the threshold to `0.66`.** This Hindi pair (66.7%) now sits
+   *just above* the threshold and clears the similarity gate directly,
+   reassembling to `{{PLURAL:$1|श्रेणी|श्रेणियाँ}}`.
+2. **Shared-stem fallback.** For inflections that fall even *below*
+   0.66, reject only when similarity *and* the shared-stem fraction are
+   both low. The Hindi pair's shared prefix already covers 83% of the
+   shorter word (`shared_affix_ratio ≈ 0.83 ≥ STEM_THRESHOLD = 0.5`), so
+   it would be accepted by this path too. A genuine hallucination shares
+   no stem and is still rejected.
+
+**Residual case (not fixed).** Short **suppletive** forms that share
+*no* stem — e.g. an isolated `{{GENDER:$1|He|She}}` → French
+"Il"/"Elle" — still fail both checks (low similarity and low stem
+ratio). This is rarer; arguably the guard should not run at all on
+such tiny isolated inputs. Left for a future iteration.
 
 ### 9.16 No per-variant fallback when consistency fails
 
