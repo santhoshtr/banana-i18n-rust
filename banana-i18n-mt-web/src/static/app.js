@@ -7,7 +7,6 @@ let isLoaded = false;
 
 // DOM elements
 const fileInput = document.getElementById("fileInput");
-const fileName = document.getElementById("fileName");
 const targetLangSelect = document.getElementById("targetLang");
 const exportBtn = document.getElementById("exportBtn");
 const messageList = document.getElementById("messageList");
@@ -52,7 +51,6 @@ async function handleFileUpload(event) {
     savedTranslations = {};
 
     // Update UI
-    fileName.textContent = `✓ ${file.name} (${Object.keys(sourceMessages).length} messages)`;
     emptyState.style.display = "none";
     messageList.style.display = "grid";
     isLoaded = true;
@@ -440,17 +438,13 @@ function showStatus(message, type = "info") {
   const statusDiv = document.createElement("div");
   statusDiv.className = "status-text";
   statusDiv.textContent = message;
+  if (type === "error") {
+    statusDiv.style.color = "var(--color-error)";
+  }
 
+  // Keep the latest message visible in the footer (no auto-clear).
   statusBar.innerHTML = "";
   statusBar.appendChild(statusDiv);
-
-  // Auto-clear after 5 seconds
-  if (type !== "error") {
-    setTimeout(() => {
-      statusDiv.style.opacity = "0";
-      setTimeout(() => statusDiv.remove(), 300);
-    }, 5000);
-  }
 }
 
 /**
