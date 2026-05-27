@@ -233,9 +233,14 @@ the related sentences side by side. Two-line transcripts of "the same
 sentence with one word swapped" force consistency far more strongly
 than independent calls.
 
-### 5.2 Encoding
+### 5.2 Encoding (per-provider)
 
-Variants are joined into one block with one-based numbering:
+Block encoding is **per-provider** — each `MachineTranslator` implementation
+picks the format the engine handles best, by overriding the default
+`translate_as_block` method.
+
+**Default (used by `GoogleTranslateProvider` and the mock)** — variants
+are joined as one-based numbered text:
 
 ```
 1. He sent a message
@@ -245,9 +250,31 @@ Variants are joined into one block with one-based numbering:
 6. They sent 777002 messages
 ```
 
-After translation, the response is split on the regex `\n?\d+\.\s`,
-empty fragments are dropped, and the count is checked against the
-input.
+The response is split on the regex `\n?\d+\.\s`, empty fragments are
+dropped, and the count is checked against the input. Google handles this
+robustly across languages.
+
+**`MintProvider` override** — markdown bulleted list translated in
+`format: "markdown"`:
+
+```
+* He sent a message
+* He sent 777002 messages
+* She sent a message
+...
+* They sent 777002 messages
+```
+
+The response is split on `^\*[ \t]+(.*?)[ \t]*$` (multiline). MinT's
+NLLB-class models reorder, dedupe, or hallucinate cross-variant context
+on short numbered variants (e.g. translating `1. Hidden category` →
+`1. El número de personas Categoría oculta` for `es`). Markdown bullets
+carry no numeric semantics and preserve the list structure exactly. An
+empirical sweep across 12 cases (es / fr / mr / ar / he / bn / zh / ja,
+short and long, anchor-bearing, 6-variant GENDER×PLURAL, wikitext,
+ampersand) was clean for every case. MinT's `html` mode also works in
+isolation but is known to be unreliable in the wild, so the markdown
+path is preferred.
 
 Cleanup pass: each split line is run through `normalize_anchors`
 (`translator.rs`), which de-mangles the anchor tokens the MT engine
@@ -280,6 +307,9 @@ The trait `MachineTranslator` (`translator.rs`) is the abstraction:
 `translate_as_block` is a **default method on the trait**, so every
 backend gets block translation — and the `normalize_anchors` cleanup
 (§5.2) — for free; a provider may override it for a different strategy.
+`MintProvider` does exactly this: it ships variants as a markdown bulleted
+list in `format: "markdown"` to avoid the short-variant hallucination
+NLLB-class models produce on numbered input (see §5.2 and §9.6).
 
 ---
 
@@ -660,10 +690,23 @@ through; both are one-line additions. Glued adjacent anchors
 (`$1$2` → `777001777002`) and an anchor with a digit glued directly in
 front (`5$1` → `5777001`) are intentionally left alone (ambiguous).
 
-### 9.6 Block-translation reordering / merging
+### 9.6 Block-translation reordering / merging — MITIGATED for MinT
 
-The block protocol assumes the MT preserves both line count *and*
-order. Counter-examples observed in the wild:
+> **Status:** Mitigated for `MintProvider` by switching that backend's
+> block protocol from numbered text to a markdown bulleted list in
+> `format: "markdown"` (see §5.2). NLLB-class models behind MinT used to
+> reorder, dedupe, or hallucinate cross-variant context on short numbered
+> variants — translating `{{PLURAL:$1|Hidden category|Hidden categories}}`
+> to `es` produced `1. El número de personas Categoría oculta` for the
+> singular and tripped the consistency guard (§9.15). Markdown bullets
+> carry no numeric semantics; an empirical sweep over 12 cases (multiple
+> languages, anchor-bearing variants, 6-variant block) was clean for all.
+> Regression test: `test_e2e_short_plural_es_mint_no_hallucination`.
+
+The default numbered-text path still applies to `GoogleTranslateProvider`
+and `MockTranslator`. Google handles numbering robustly; if a future
+engine repeats MinT's failure mode, override `translate_as_block`
+similarly. The general risks below remain in principle:
 
 - Some engines strip the numbering for languages whose ordinal
   formatting differs.
@@ -732,13 +775,14 @@ emit `{{PLURAL:$N|...}}` — even if the original was GENDER. A
 debug-only `assert!` or an `MtError::ReassemblyError` would surface
 this earlier.
 
-### 9.12 Numbered-prefix collision in source
+### 9.12 Block-prefix collision in source
 
-`translate_as_block` injects `"1. "`, `"2. "` … into the source.
-If the message itself begins with a similar pattern (`"1. Click
-here"`), the re-split regex `\d+\.\s` may swallow it after MT, leading
-to off-by-one truncation. Unlikely in MediaWiki messages but worth a
-guard.
+The default `translate_as_block` injects `"1. "`, `"2. "` … into the
+source; the `MintProvider` override injects `"* "`. If a message itself
+begins with a similar pattern (`"1. Click here"` for the default,
+`"* Item"` for the MinT path), the re-split regex may swallow part of
+it after MT, leading to off-by-one truncation. Unlikely in MediaWiki
+messages but worth a guard.
 
 ### 9.13 Nested magic words aren't supported
 
@@ -816,6 +860,16 @@ aborts. No partial result is returned, no diagnostic is attached to a
 specific axis, no retry is attempted. A natural retry would be to
 translate the offending pair individually and re-attempt the fold —
 not implemented.
+
+The most common trigger — **block-induced** hallucination on short MinT
+variants — is now addressed at source by the markdown-bullet block
+protocol (§9.6), so the remaining `ConsistencyError` cases tend to be
+**intrinsic** morphological divergence (e.g. Arabic singular vs plural
+having different word order). A per-variant retry would not help those:
+the two outputs are independently correct yet legitimately too
+different to fold. The right next step would be a partial result that
+keeps the unaffected axes collapsed and surfaces the failing axis to the
+user.
 
 ### 9.17 No source-language-side anchoring of PLURAL counts
 

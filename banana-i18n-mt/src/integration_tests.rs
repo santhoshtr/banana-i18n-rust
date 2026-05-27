@@ -531,6 +531,28 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore] // Run with: cargo test --ignored  (hits the live MinT service, no key)
+    async fn test_e2e_short_plural_es_mint_no_hallucination() {
+        // Regression: with the old numbered-text block protocol, MinT
+        // hallucinated "El número de personas …" on this case and reassembly
+        // failed with ConsistencyError. The markdown-bullet override on
+        // MintProvider keeps the variants clean.
+        let provider = MintProvider::new().expect("MinT provider");
+        let source = "{{PLURAL:$1|Hidden category|Hidden categories}}";
+        let Some(result) = pipeline_via(&provider, source, "es").await else {
+            return;
+        };
+        println!("MinT es → {}", result);
+        assert!(result.contains("{{PLURAL:$1|"), "PLURAL preserved: {}", result);
+        assert!(result.contains("Categoría oculta"), "singular form present: {}", result);
+        assert!(result.contains("Categorías ocultas"), "plural form present: {}", result);
+        assert!(
+            !result.contains("número de personas"),
+            "no hallucinated context: {}", result
+        );
+    }
+
+    #[tokio::test]
     #[ignore] // Run with: cargo test --ignored  (needs GOOGLE_TRANSLATE_API_KEY)
     async fn test_e2e_anchor_recovery_google_native_digits() {
         if !require_api_key() {

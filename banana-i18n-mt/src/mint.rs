@@ -28,8 +28,9 @@
 //! ```
 
 use crate::error::{MtError, MtResult};
-use crate::translator::{MachineTranslator, validate_locale};
+use crate::translator::{MachineTranslator, normalize_anchors, validate_locale};
 use async_trait::async_trait;
+use regex::Regex;
 use serde_json::json;
 
 /// Default MinT endpoint (Wikimedia Cloud Services).
@@ -87,6 +88,72 @@ impl MintProvider {
             std::env::var("MINT_API_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
         Self::with_base_url(base_url)
     }
+
+    /// POST `content` to the MinT `/translate` endpoint with the given
+    /// `format` (e.g. `"text"`, `"markdown"`) and return the `translation`
+    /// field from the response.
+    ///
+    /// Locale validation is the caller's responsibility.
+    async fn translate_with_format(
+        &self,
+        content: &str,
+        source_locale: &str,
+        target_locale: &str,
+        format: &str,
+    ) -> MtResult<String> {
+        if content.len() > Self::MAX_CHARS_PER_STRING {
+            return Err(MtError::TranslationError(format!(
+                "Text exceeds maximum length of {} characters",
+                Self::MAX_CHARS_PER_STRING
+            )));
+        }
+
+        // MinT uses full MediaWiki language codes; pass through unchanged.
+        let body = json!({
+            "content": content,
+            "source_language": source_locale,
+            "target_language": target_locale,
+            "format": format,
+        });
+
+        let response = self.client.post(&self.base_url).json(&body).send().await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(if status.is_client_error() {
+                MtError::ConfigError(format!("MinT client error ({}): {}", status, error_text))
+            } else {
+                MtError::TranslationError(format!("MinT server error ({}): {}", status, error_text))
+            });
+        }
+
+        let json: serde_json::Value = response.json().await.map_err(|e| {
+            MtError::TranslationError(format!("Failed to parse MinT response: {}", e))
+        })?;
+
+        json["translation"]
+            .as_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| {
+                MtError::TranslationError(
+                    "Invalid MinT response: missing 'translation' field".to_string(),
+                )
+            })
+    }
+}
+
+/// Extract the content of each `* …` bullet line from a markdown-format
+/// translation. Tolerates extra spaces around the bullet content and
+/// ignores non-bullet lines.
+fn parse_markdown_bullets(text: &str) -> Vec<String> {
+    let re = Regex::new(r"(?m)^\*[ \t]+(.*?)[ \t]*$").unwrap();
+    re.captures_iter(text)
+        .map(|c| c.get(1).unwrap().as_str().to_string())
+        .collect()
 }
 
 impl Default for MintProvider {
@@ -111,7 +178,6 @@ impl MachineTranslator for MintProvider {
         source_locale: &str,
         target_locale: &str,
     ) -> MtResult<String> {
-        // Validate inputs
         validate_locale(source_locale)?;
         validate_locale(target_locale)?;
 
@@ -119,54 +185,8 @@ impl MachineTranslator for MintProvider {
             return Ok(String::new());
         }
 
-        // Check character limit
-        if text.len() > Self::MAX_CHARS_PER_STRING {
-            return Err(MtError::TranslationError(format!(
-                "Text exceeds maximum length of {} characters",
-                Self::MAX_CHARS_PER_STRING
-            )));
-        }
-
-        // Build request body. MinT uses full MediaWiki language codes, so we
-        // pass the locales through unchanged (no region/script stripping).
-        let body = json!({
-            "content": text,
-            "source_language": source_locale,
-            "target_language": target_locale,
-            "format": "text",
-        });
-
-        // Send POST request (no authentication required)
-        let response = self.client.post(&self.base_url).json(&body).send().await?;
-
-        // Check HTTP status
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-
-            return Err(if status.is_client_error() {
-                MtError::ConfigError(format!("MinT client error ({}): {}", status, error_text))
-            } else {
-                MtError::TranslationError(format!("MinT server error ({}): {}", status, error_text))
-            });
-        }
-
-        // Parse response JSON and extract the `translation` field
-        let json: serde_json::Value = response.json().await.map_err(|e| {
-            MtError::TranslationError(format!("Failed to parse MinT response: {}", e))
-        })?;
-
-        json["translation"]
-            .as_str()
-            .map(|s| s.to_string())
-            .ok_or_else(|| {
-                MtError::TranslationError(
-                    "Invalid MinT response: missing 'translation' field".to_string(),
-                )
-            })
+        self.translate_with_format(text, source_locale, target_locale, "text")
+            .await
     }
 
     async fn translate_batch(
@@ -189,6 +209,62 @@ impl MachineTranslator for MintProvider {
 
     fn provider_name(&self) -> &str {
         "MinT"
+    }
+
+    /// Override the default numbered-text block protocol with a markdown
+    /// bulleted list translated in `format: "markdown"`.
+    ///
+    /// NLLB-class models behind MinT reorder, dedupe, or hallucinate
+    /// cross-variant context when fed short numbered variants (docs §9.6
+    /// and the failing Spanish PLURAL case from 2026-05-28). Bullets in
+    /// markdown mode carry no numeric semantics and preserve the list
+    /// structure exactly.
+    async fn translate_as_block(
+        &self,
+        variants: &[String],
+        source_locale: &str,
+        target_locale: &str,
+    ) -> MtResult<Vec<String>> {
+        validate_locale(source_locale)?;
+        validate_locale(target_locale)?;
+
+        if variants.is_empty() {
+            return Ok(Vec::new());
+        }
+        if variants.len() == 1 {
+            // A single bullet is meaningless; just translate the variant.
+            let out = self
+                .translate(&variants[0], source_locale, target_locale)
+                .await?;
+            return Ok(vec![normalize_anchors(&out)]);
+        }
+
+        // 1. Build the bulleted markdown block.
+        let block: String = variants
+            .iter()
+            .map(|v| format!("* {}", v))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // 2. One MT call in markdown mode.
+        let translated = self
+            .translate_with_format(&block, source_locale, target_locale, "markdown")
+            .await?;
+
+        // 3. Pull each bullet's content out of the response.
+        let lines = parse_markdown_bullets(&translated);
+
+        if lines.len() != variants.len() {
+            return Err(MtError::TranslationError(format!(
+                "MinT markdown block count mismatch: expected {}, got {}. Block: '{}'",
+                variants.len(),
+                lines.len(),
+                translated
+            )));
+        }
+
+        // 4. De-mangle anchor tokens per line (same as the default path).
+        Ok(lines.iter().map(|s| normalize_anchors(s)).collect())
     }
 }
 
@@ -270,6 +346,50 @@ mod tests {
     fn test_provider_name() {
         let provider = MintProvider::new().unwrap();
         assert_eq!(provider.provider_name(), "MinT");
+    }
+
+    // ========== Markdown Bullet Parsing Tests ==========
+
+    #[test]
+    fn test_parse_markdown_bullets_basic() {
+        let out = parse_markdown_bullets("* Categoría oculta\n* Categorías ocultas");
+        assert_eq!(out, vec!["Categoría oculta", "Categorías ocultas"]);
+    }
+
+    #[test]
+    fn test_parse_markdown_bullets_extra_whitespace() {
+        // MinT sometimes pads bullets with extra spaces or trailing whitespace.
+        let out = parse_markdown_bullets("*   foo  \n*  bar\t");
+        assert_eq!(out, vec!["foo", "bar"]);
+    }
+
+    #[test]
+    fn test_parse_markdown_bullets_ignores_non_bullet_lines() {
+        let out = parse_markdown_bullets("* one\nstray line\n* two");
+        assert_eq!(out, vec!["one", "two"]);
+    }
+
+    #[test]
+    fn test_parse_markdown_bullets_empty_input() {
+        assert!(parse_markdown_bullets("").is_empty());
+    }
+
+    #[test]
+    fn test_parse_markdown_bullets_six_variants() {
+        let raw = "* a1\n* a2\n* b1\n* b2\n* c1\n* c2";
+        assert_eq!(parse_markdown_bullets(raw).len(), 6);
+    }
+
+    #[tokio::test]
+    async fn test_translate_as_block_empty() {
+        // No network call expected for the empty-variants fast path.
+        let provider = MintProvider::new().unwrap();
+        let empty: Vec<String> = vec![];
+        let out = provider
+            .translate_as_block(&empty, "en", "fr")
+            .await
+            .unwrap();
+        assert!(out.is_empty());
     }
 
     // ========== Integration Tests (require network; no API key) ==========
